@@ -1,12 +1,10 @@
-// lib/methods/api.dart
-
 import 'package:dio/dio.dart';
 
 class ApiService {
-  // Instance Dio Anda
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'http://localhost:5000/api', // Base URL Anda
+      // Port 5000 Anda sudah benar
+      baseUrl: 'http://localhost:5000/api',
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 3),
       headers: {
@@ -16,12 +14,14 @@ class ApiService {
     ),
   );
 
-  // Metode Login (sudah ada)
-  Future<Map<String, dynamic>> login(String username, String password) async {
+  // --- (INI PERBAIKANNYA) ---
+  // Parameter diubah dari 'username' menjadi 'email' agar sesuai dengan backend
+  Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await _dio.post(
         '/auth/login',
-        data: {'username': username, 'password': password},
+        // Mengirim 'email', bukan 'username'
+        data: {'email': email, 'password': password},
       );
       return response.data;
     } on DioException catch (e) {
@@ -34,8 +34,9 @@ class ApiService {
       throw Exception('Terjadi kesalahan yang tidak diketahui: $e');
     }
   }
+  // -------------------------
 
-  // --- INI ADALAH FUNGSI BARU YANG WAJIB DITAMBAHKAN ---
+  // Fungsi register (tetap sama)
   Future<Map<String, dynamic>> register(
     String name,
     String username,
@@ -43,9 +44,8 @@ class ApiService {
     String password,
   ) async {
     try {
-      // Pastikan endpoint '/auth/register' ini sesuai dengan API Anda
       final response = await _dio.post(
-        '/auth/register', // Sesuaikan jika endpoint Anda berbeda
+        '/auth/register',
         data: {
           'name': name,
           'username': username,
@@ -53,10 +53,8 @@ class ApiService {
           'password': password,
         },
       );
-      // Mengembalikan data jika sukses (misal: "registrasi berhasil")
       return response.data;
     } on DioException catch (e) {
-      // Menangani error spesifik dari server (misal: "username sudah dipakai")
       if (e.response != null && e.response?.data != null) {
         throw Exception(e.response?.data['message'] ?? 'Registrasi gagal');
       } else {
