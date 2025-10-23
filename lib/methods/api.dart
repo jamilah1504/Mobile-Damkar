@@ -6,7 +6,7 @@ class ApiService {
   // Instance Dio Anda
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'http://localhost:3000/api', // Base URL Anda
+      baseUrl: 'http://localhost:5000/api', // Base URL Anda
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 3),
       headers: {
