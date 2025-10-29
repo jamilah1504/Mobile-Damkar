@@ -1,28 +1,8 @@
 import 'package:flutter/material.dart';
-// HAPUS: import 'package:http/http.dart' as http;
-// HAPUS: import 'dart:convert';
-
-// TAMBAHKAN: Impor untuk ApiService dan RegisterScreen
-import 'package:mobile_damkar/methods/api.dart'; // <-- DIUPDATE
-import 'package:mobile_damkar/screens/auth/register.dart'; // <-- DIUPDATE
-
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Pemadam Kebakaran',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const LoginScreen(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}
+import '../../methods/api.dart'; // Sesuaikan path jika perlu
+import 'register.dart'; // Sesuaikan path jika perlu
+// --- PERBAIKAN PATH IMPOR ---
+import '../home.dart'; // Sesuaikan nama file jika 'home_screen.dart'
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -32,12 +12,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // TAMBAHKAN: Instance dari ApiService Anda
-  final ApiService _apiService = ApiService();
-
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final ApiService _apiService = ApiService();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -48,53 +27,67 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // --- (FUNGSI LOGIN INI DI-UPDATE) ---
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // Panggil ApiService, bukan 'http'
       final data = await _apiService.login(
         _usernameController.text,
         _passwordController.text,
       );
 
+      // --- TAMBAHAN: Cetak pesan sebelum navigasi ---
+      print("Login berhasil, data diterima. Mencoba navigasi ke HomeScreen...");
+      // --- AKHIR TAMBAHAN ---
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            data['message'] ?? 'Login berhasil!',
-          ), // Ambil pesan dari API
+          content: Text(data['message'] ?? 'Login berhasil!'),
           backgroundColor: Colors.green,
         ),
       );
 
-      // Navigasi ke halaman selanjutnya atau simpan token
-      print('Login successful: $data');
-      // CONTOH: Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
     } catch (e) {
-      // Tangkap Exception yang dilempar oleh ApiService
+      // --- TAMBAHAN: Cetak error jika terjadi ---
+      print("Error saat login atau navigasi: $e");
+      // --- AKHIR TAMBAHAN ---
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e.toString(),
-          ), // Pesan error sudah diformat oleh ApiService
+          content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: Colors.red,
         ),
       );
     } finally {
-      // Pastikan loading berhenti, baik sukses maupun gagal
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  Widget _buildInputContainer({required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
   }
 
   @override
@@ -110,38 +103,20 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo
-                  Container(
-                    child: Center(
-                      child: Image.asset(
-                        'Images/logo2.png', // Ganti dengan path logo Anda
-                        width: 220,
-                        height: 220,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.local_fire_department,
-                            size: 80,
-                            color: Colors.red[700],
-                          );
-                        },
+                  Center(
+                    child: Image.asset(
+                      'Images/logo2.png',
+                      width: 220,
+                      height: 220,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.local_fire_department,
+                        size: 80,
+                        color: Colors.red[700],
                       ),
                     ),
                   ),
                   const SizedBox(height: 44),
-
-                  // Username Field
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 5,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
+                  _buildInputContainer(
                     child: TextFormField(
                       controller: _usernameController,
                       decoration: const InputDecoration(
@@ -153,30 +128,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           vertical: 16,
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Username/email tidak boleh kosong';
-                        }
-                        return null;
-                      },
+                      validator: (value) => (value == null || value.isEmpty)
+                          ? 'Username/email tidak boleh kosong'
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Password Field
-                  Container(
-                    // ... (styling password field tidak berubah) ...
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 5,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
+                  _buildInputContainer(
                     child: TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
@@ -197,26 +155,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Icons.visibility,
                             color: Colors.grey,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Password tidak boleh kosong';
-                        }
-                        return null;
-                      },
+                      validator: (value) => (value == null || value.isEmpty)
+                          ? 'Password tidak boleh kosong'
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Login Button
                   SizedBox(
-                    // ... (styling login button tidak berubah) ...
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
@@ -248,8 +198,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Register Link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -259,8 +207,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          // --- (INI DI-UPDATE) ---
-                          // Navigasi ke halaman register
                           Navigator.push(
                             context,
                             MaterialPageRoute(
