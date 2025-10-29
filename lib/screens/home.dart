@@ -58,8 +58,8 @@ class HomeScreen extends StatelessWidget {
               // 1. Banner Image
               ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
-                child: Image.network(
-                  'https://placehold.co/600x200/FF0000/FFFFFF?text=Banner+Damkar', // Ganti URL gambar banner
+                child: Image.asset(
+                  'Images/logo2.png', // Ganti URL gambar banner
                   height: 150,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Container(
