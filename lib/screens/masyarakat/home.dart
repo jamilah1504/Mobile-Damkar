@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../screens/auth/login.dart';
+import '../masyarakat/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+class MasyarakatHomeScreen extends StatelessWidget {
+  const MasyarakatHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -20,10 +20,10 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: primaryColor,
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
-          // Ganti dengan logo Anda
           child: Image.asset(
+            // Ganti dengan path logo Anda
             'Images/logo2.png',
-            width: 40, // Adjust size as needed
+            width: 40,
             height: 40,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) =>
@@ -34,24 +34,6 @@ class HomeScreen extends StatelessWidget {
           'Pemadam Kebakaran\nKabupaten Subang',
           style: TextStyle(fontSize: 16, color: Colors.white),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: primaryColor,
-              ),
-              child: const Text('Login'),
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -63,7 +45,8 @@ class HomeScreen extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
                 child: Image.asset(
-                  'Images/image.png', // Ganti URL gambar banner
+                  // Ganti dengan path banner Anda
+                  'Images/image.png',
                   height: 150,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Container(
@@ -76,16 +59,29 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               // 2. Tombol Lapor Utama
-              _buildLaporSection(primaryColor, secondaryColor),
+              _buildLaporSection(
+                context,
+                primaryColor,
+                secondaryColor,
+              ), // Berikan context
               const SizedBox(height: 24),
 
               // 3. Section Layanan
-              _buildLayananSection(secondaryColor, textColor),
+              _buildLayananSection(
+                context,
+                secondaryColor,
+                textColor,
+              ), // Berikan context
               const SizedBox(height: 24),
 
               // 4. Section Materi Edukasi
-              _buildEdukasiSection(cardColor, textColor, subtleTextColor),
-              const SizedBox(height: 24), // Tambahan space di bawah
+              _buildEdukasiSection(
+                context,
+                cardColor,
+                textColor,
+                subtleTextColor,
+              ), // Berikan context
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -93,7 +89,10 @@ class HomeScreen extends StatelessWidget {
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'Riwayat',
+          ), // Pastikan ikon dan label sesuai
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications),
             label: 'Notifikasi',
@@ -102,66 +101,50 @@ class HomeScreen extends StatelessWidget {
         currentIndex: 0, // Indeks item yang aktif (Beranda)
         selectedItemColor: primaryColor,
         unselectedItemColor: Colors.grey,
+        // --- PERBAIKI LOGIKA onTap ---
         onTap: (index) {
           // Aksi saat item navigasi ditekan
+          if (index == 1) {
+            // Jika tombol Riwayat (indeks 1) ditekan
+            Navigator.push(
+              // Gunakan push agar bisa kembali ke Beranda
+              context,
+              MaterialPageRoute(
+                builder: (context) => const RiwayatLaporanScreen(),
+              ),
+            );
+          }
+          // Tambahkan logika untuk indeks lain jika perlu
+          // else if (index == 0) { /* Sudah di Beranda */ }
+          // else if (index == 2) { /* Navigasi ke Halaman Notifikasi */ }
         },
+        // --- AKHIR PERBAIKAN onTap ---
       ),
     );
   }
 
-  // Widget untuk section tombol lapor
-  Widget _buildLaporSection(Color primaryColor, Color secondaryColor) {
+  // Widget _buildLaporSection perlu context
+  Widget _buildLaporSection(
+    BuildContext context,
+    Color primaryColor,
+    Color secondaryColor,
+  ) {
     return Column(
       children: [
-        Container(
-          width: 150,
-          height: 150,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: secondaryColor, // Warna lingkaran luar
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                spreadRadius: 2,
-                blurRadius: 5,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 130,
-              height: 130,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: primaryColor, // Warna lingkaran dalam
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.mic, color: Colors.white, size: 40),
-                    SizedBox(height: 5),
-                    Text(
-                      'LAPOR',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+        // ... (Container Lingkaran LAPOR tidak berubah)
+        Container(/* ... */),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                // Navigasi ke halaman Lapor Via Teks
+                // Navigator.push(context, MaterialPageRoute(builder: (context) => const LaporTeksScreen()));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Navigasi ke Lapor Teks')),
+                );
+              },
               icon: const Icon(Icons.text_fields),
               label: const Text('Lapor Via Teks'),
               style: ElevatedButton.styleFrom(
@@ -175,7 +158,12 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(width: 16),
             ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                // Logika untuk melakukan panggilan telepon
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Membuka Panggilan Telepon')),
+                );
+              },
               icon: const Icon(Icons.phone),
               label: const Text('Telepon'),
               style: ElevatedButton.styleFrom(
@@ -193,8 +181,44 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // Widget untuk section layanan
-  Widget _buildLayananSection(Color buttonColor, Color textColor) {
+  // Widget _buildLayananSection perlu context
+  Widget _buildLayananSection(
+    BuildContext context,
+    Color buttonColor,
+    Color textColor,
+  ) {
+    // Daftar layanan dengan aksi navigasi
+    final List<Map<String, dynamic>> services = [
+      {
+        'icon': Icons.local_fire_department,
+        'label': 'Lapor\nKebakaran',
+        'action': () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigasi ke Lapor Kebakaran')),
+        ),
+      },
+      {
+        'icon': Icons.support,
+        'label': 'Lapor Non\nKebakaran',
+        'action': () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigasi ke Lapor Non Kebakaran')),
+        ),
+      },
+      {
+        'icon': Icons.bar_chart,
+        'label': 'Grafik\nKejadian',
+        'action': () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigasi ke Grafik Kejadian')),
+        ),
+      },
+      {
+        'icon': Icons.book,
+        'label': 'Daftar\nKunjungan',
+        'action': () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigasi ke Daftar Kunjungan')),
+        ),
+      },
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -203,53 +227,40 @@ class HomeScreen extends StatelessWidget {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 3, // 3 kolom
-          shrinkWrap: true, // Agar GridView menyesuaikan tingginya
-          physics:
-              const NeverScrollableScrollPhysics(), // Nonaktifkan scroll internal
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          children: [
-            _buildServiceButton(
-              Icons.local_fire_department,
-              'Lapor\nKebakaran',
+        GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+          ),
+          itemCount: services.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemBuilder: (context, index) {
+            final service = services[index];
+            return _buildServiceButton(
+              service['icon'],
+              service['label'],
               buttonColor,
               textColor,
-            ),
-            _buildServiceButton(
-              Icons.support,
-              'Lapor Non\nKebakaran',
-              buttonColor,
-              textColor,
-            ),
-            _buildServiceButton(
-              Icons.bar_chart,
-              'Grafik\nKejadian',
-              buttonColor,
-              textColor,
-            ),
-            _buildServiceButton(
-              Icons.book,
-              'Daftar\nKunjungan',
-              buttonColor,
-              textColor,
-            ),
-          ],
+              service['action'], // Tambahkan aksi
+            );
+          },
         ),
       ],
     );
   }
 
-  // Widget untuk tombol layanan individual
+  // Widget _buildServiceButton perlu VoidCallback onPressed
   Widget _buildServiceButton(
     IconData icon,
     String label,
     Color buttonColor,
     Color textColor,
+    VoidCallback onPressed,
   ) {
     return ElevatedButton(
-      onPressed: () {},
+      onPressed: onPressed, // Gunakan callback yang diberikan
       style: ElevatedButton.styleFrom(
         backgroundColor: buttonColor,
         foregroundColor: Colors.white,
@@ -271,8 +282,9 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // Widget untuk section materi edukasi
+  // Widget _buildEdukasiSection perlu context
   Widget _buildEdukasiSection(
+    BuildContext context,
     Color cardColor,
     Color textColor,
     Color subtleTextColor,
@@ -292,9 +304,11 @@ class HomeScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: InkWell(
-            // Membuat Card bisa ditekan
             onTap: () {
               // Aksi saat card edukasi ditekan
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Membuka Detail Edukasi')),
+              );
             },
             child: Padding(
               padding: const EdgeInsets.all(12.0),
@@ -304,12 +318,10 @@ class HomeScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Ganti dengan logo partner jika ada
                         Image.network(
                           'https://placehold.co/100x20/cccccc/000000?text=Partner',
                           height: 20,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const SizedBox(height: 20),
+                          errorBuilder: (c, e, s) => const SizedBox(height: 20),
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -322,7 +334,7 @@ class HomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Pelajari lebih lanjut tentang tugas...', // Tambahkan deskripsi singkat
+                          'Pelajari lebih lanjut tentang tugas...',
                           style: TextStyle(
                             fontSize: 12,
                             color: subtleTextColor,
@@ -335,11 +347,11 @@ class HomeScreen extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8.0),
                     child: Image.network(
-                      'https://placehold.co/100x80/FFA07A/FFFFFF?text=Edukasi', // Ganti URL gambar edukasi
+                      'https://placehold.co/100x80/FFA07A/FFFFFF?text=Edukasi',
                       width: 100,
                       height: 80,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
+                      errorBuilder: (c, e, s) => Container(
                         width: 100,
                         height: 80,
                         color: Colors.grey.shade300,

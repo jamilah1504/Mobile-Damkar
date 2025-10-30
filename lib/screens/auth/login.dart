@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../methods/api.dart'; // Sesuaikan path jika perlu
 import 'register.dart'; // Sesuaikan path jika perlu
-// --- PERBAIKAN PATH IMPOR ---
-import '../home.dart'; // Sesuaikan nama file jika 'home_screen.dart'
+
+// --- 1. Impor Halaman Beranda (Admin Dihapus) ---
+// Pastikan nama class di dalam file-file ini sesuai
+import '../masyarakat/home.dart';
+// import '../admin/home.dart'; // <-- HAPUS IMPOR INI
+import '../petugas/home.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -12,11 +16,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  // ... (State variables tidak berubah)
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
-
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -29,7 +33,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
 
     try {
@@ -37,11 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text,
         _passwordController.text,
       );
-
-      // --- TAMBAHAN: Cetak pesan sebelum navigasi ---
-      print("Login berhasil, data diterima. Mencoba navigasi ke HomeScreen...");
-      // --- AKHIR TAMBAHAN ---
-
+      print("Login berhasil, data diterima: $data");
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -51,14 +50,46 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
 
+      final String role = data['role']?.toLowerCase() ?? '';
+      print("Role terdeteksi: $role");
+
+      Widget destinationScreen;
+
+      // --- PERBAIKAN: Case 'admin' dihapus ---
+      switch (role) {
+        // case 'admin': // <-- HAPUS CASE INI
+        //   print("Cocok dengan case 'admin'. Navigasi ke AdminHomeScreen.");
+        //   destinationScreen = const AdminHomeScreen();
+        //   break;
+        case 'petugas':
+          print("Cocok dengan case 'petugas'. Navigasi ke PetugasHomeScreen.");
+          destinationScreen =
+              const PetugasHomeScreen(); // Gunakan home screen Petugas
+          break;
+        case 'masyarakat':
+          print(
+            "Cocok dengan case 'masyarakat'. Navigasi ke MasyarakatHomeScreen.",
+          );
+          destinationScreen =
+              const MasyarakatHomeScreen(); // Gunakan home screen Masyarakat
+          break;
+        default:
+          print(
+            "Tidak cocok (default). Navigasi ke MasyarakatHomeScreen sebagai fallback.",
+          );
+          destinationScreen =
+              const MasyarakatHomeScreen(); // Fallback ke home Masyarakat
+      }
+      // --- AKHIR PERBAIKAN ---
+
+      print("Mencoba navigasi ke destinationScreen...");
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(builder: (context) => destinationScreen),
       );
+      print("Navigasi seharusnya sudah dipanggil.");
     } catch (e) {
-      // --- TAMBAHAN: Cetak error jika terjadi ---
       print("Error saat login atau navigasi: $e");
-      // --- AKHIR TAMBAHAN ---
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -73,6 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Widget _buildInputContainer (tidak berubah)
   Widget _buildInputContainer({required Widget child}) {
     return Container(
       decoration: BoxDecoration(
@@ -92,6 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // UI LoginScreen (tidak berubah)
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: SafeArea(
@@ -105,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Center(
                     child: Image.asset(
-                      'Images/logo2.png',
+                      'Images/logo2.png', // Pastikan path benar
                       width: 220,
                       height: 220,
                       errorBuilder: (context, error, stackTrace) => Icon(
