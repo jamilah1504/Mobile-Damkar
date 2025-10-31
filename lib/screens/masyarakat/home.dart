@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../masyarakat/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
+import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
 
 class MasyarakatHomeScreen extends StatelessWidget {
   const MasyarakatHomeScreen({super.key});
@@ -140,7 +140,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () {
                 // Navigasi ke halaman Lapor Via Teks
-                // Navigator.push(context, MaterialPageRoute(builder: (context) => const LaporTeksScreen()));
+                // avigator.push(context, MaterialPageRoute(builder: (context) => const LaporTeksScreen()));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Navigasi ke Lapor Teks')),
                 );
@@ -210,6 +210,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
           const SnackBar(content: Text('Navigasi ke Grafik Kejadian')),
         ),
       },
+
       {
         'icon': Icons.book,
         'label': 'Daftar\nKunjungan',

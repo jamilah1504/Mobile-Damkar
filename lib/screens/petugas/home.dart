@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async'; // Untuk Timer
+import 'daftarTugas.dart';
 
 class PetugasHomeScreen extends StatefulWidget {
   const PetugasHomeScreen({super.key});
@@ -154,6 +155,18 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
         unselectedItemColor: Colors.grey,
         onTap: (index) {
           // Aksi navigasi bawah
+          if (index == 1) {
+            // Index 1 adalah 'Riwayat'
+            // Kita gunakan MaterialPageRoute agar tidak perlu registrasi rute
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const DaftarTugasScreen(),
+              ),
+            );
+          }
+          // else if (index == 0) { // Anda sudah di Beranda }
+          // else if (index == 2) { // Navigasi ke halaman Info }
         },
       ),
     );
