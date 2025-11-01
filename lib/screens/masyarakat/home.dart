@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import './laporan/RiwayatLaporanScreen.dart';
+import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; // Impo
 import 'DetailEdukasiScreen.dart'; // Halaman detail
 import '../../models/edukasi.dart';
 import '../../methods/api.dart';
@@ -241,6 +241,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           const SnackBar(content: Text('Navigasi ke Grafik Kejadian')),
         ),
       },
+
       {
         'icon': Icons.book,
         'label': 'Daftar\nKunjungan',
