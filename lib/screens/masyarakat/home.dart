@@ -83,7 +83,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                 const SizedBox(height: 24),
 
                 // Lapor
-                _buildLaporSection(context, primaryColor, secondaryColor),
+                _buildLaporSection(primaryColor, secondaryColor),
                 const SizedBox(height: 24),
 
                 // Layanan
@@ -130,27 +130,48 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   }
 
   // Lapor Section
-  Widget _buildLaporSection(
-    BuildContext context,
-    Color primaryColor,
-    Color secondaryColor,
-  ) {
+  Widget _buildLaporSection(Color primaryColor, Color secondaryColor) {
     return Column(
       children: [
         Container(
-          width: 120,
-          height: 120,
+          width: 150,
+          height: 150,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: primaryColor.withOpacity(0.2),
+            color: secondaryColor, // Warna lingkaran luar
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                spreadRadius: 2,
+                blurRadius: 5,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Center(
-            child: Text(
-              'LAPOR',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: primaryColor,
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor, // Warna lingkaran dalam
+              ),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.mic, color: Colors.white, size: 40),
+                    SizedBox(height: 5),
+                    Text(
+                      'LAPOR',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -160,11 +181,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Navigasi ke Lapor Teks')),
-                );
-              },
+              onPressed: () {},
               icon: const Icon(Icons.text_fields),
               label: const Text('Lapor Via Teks'),
               style: ElevatedButton.styleFrom(
@@ -178,11 +195,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
             ),
             const SizedBox(width: 16),
             ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Membuka Panggilan Telepon')),
-                );
-              },
+              onPressed: () {},
               icon: const Icon(Icons.phone),
               label: const Text('Telepon'),
               style: ElevatedButton.styleFrom(
@@ -235,6 +248,22 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           const SnackBar(content: Text('Navigasi ke Daftar Kunjungan')),
         ),
       },
+      // --- DUA LAYANAN TAMBAHAN ---
+      {
+        'icon': Icons.school, // Ganti ikon jika perlu
+        'label': 'Edukasi\nPublik', // Ganti label jika perlu
+        'action': () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigasi ke Edukasi Publik')),
+        ),
+      },
+      {
+        'icon': Icons.contacts, // Ganti ikon jika perlu
+        'label': 'Kontak\nPetugas', // Ganti label jika perlu
+        'action': () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Navigasi ke Kontak Petugas')),
+        ),
+      },
+      // --- AKHIR TAMBAHAN ---
     ];
 
     return Column(
@@ -251,7 +280,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
           ),
-          itemCount: services.length,
+          itemCount: services.length, // Sekarang akan menjadi 6
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemBuilder: (context, index) {

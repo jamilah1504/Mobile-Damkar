@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import '../models/edukasi.dart';
+import '../models/laporan.dart';
+import '../models/laporan_lapangan.dart';
 
 class ApiService {
   final Dio _dio = Dio(
@@ -106,6 +108,39 @@ class ApiService {
     } catch (e) {
       print('Parsing Error: $e');
       throw Exception('Gagal memproses data: $e');
+    }
+  }
+
+  // GET RIWAYAT LAPORAN
+  // Di dalam ApiService
+  Future<List<Laporan>> getRiwayatLaporan(int userId) async {
+    try {
+      final response = await _dio.get('/reports');
+
+      // DEBUG: Lihat struktur respons
+      print('Raw Response: ${response.data}');
+
+      // Pastikan respons adalah Map dan ada field 'data'
+      if (response.data is! Map<String, dynamic>) {
+        throw Exception('Format respons tidak valid');
+      }
+
+      final Map<String, dynamic> json = response.data;
+      final List<dynamic> dataList = json['data'] as List<dynamic>;
+
+      return dataList
+          .where((r) => r['pelaporId'] == userId)
+          .map((json) => Laporan.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      if (e.response != null) {
+        throw Exception(e.response?.data['message'] ?? 'Gagal memuat laporan');
+      } else {
+        throw Exception('Tidak dapat terhubung ke server');
+      }
+    } catch (e) {
+      print('Error parsing laporan: $e');
+      rethrow;
     }
   }
 }

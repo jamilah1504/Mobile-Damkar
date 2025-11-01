@@ -84,27 +84,10 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               // 4. Section Materi Edukasi
-              _buildEdukasiSection(cardColor, textColor, subtleTextColor),
               const SizedBox(height: 24), // Tambahan space di bawah
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Notifikasi',
-          ),
-        ],
-        currentIndex: 0, // Indeks item yang aktif (Beranda)
-        selectedItemColor: primaryColor,
-        unselectedItemColor: Colors.grey,
-        onTap: (index) {
-          // Aksi saat item navigasi ditekan
-        },
       ),
     );
   }
@@ -235,6 +218,20 @@ class HomeScreen extends StatelessWidget {
               buttonColor,
               textColor,
             ),
+            // --- LAYANAN TAMBAHAN DIMULAI DI SINI ---
+            _buildServiceButton(
+              Icons.school, // Anda bisa ganti ikon ini
+              'Edukasi\nPublik', // Anda bisa ganti teks ini
+              buttonColor,
+              textColor,
+            ),
+            _buildServiceButton(
+              Icons.contacts, // Anda bisa ganti ikon ini
+              'Kontak\nPetugas', // Anda bisa ganti teks ini
+              buttonColor,
+              textColor,
+            ),
+            // --- AKHIR LAYANAN TAMBAHAN ---
           ],
         ),
       ],
@@ -268,93 +265,6 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  // Widget untuk section materi edukasi
-  Widget _buildEdukasiSection(
-    Color cardColor,
-    Color textColor,
-    Color subtleTextColor,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Materi Edukasi',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          color: cardColor,
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: InkWell(
-            // Membuat Card bisa ditekan
-            onTap: () {
-              // Aksi saat card edukasi ditekan
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Ganti dengan logo partner jika ada
-                        Image.network(
-                          'https://placehold.co/100x20/cccccc/000000?text=Partner',
-                          height: 20,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const SizedBox(height: 20),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Masih Bingung dengan Damkar?\nIni Dia Penjelasan',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: textColor,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Pelajari lebih lanjut tentang tugas...', // Tambahkan deskripsi singkat
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: subtleTextColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8.0),
-                    child: Image.network(
-                      'https://placehold.co/100x80/FFA07A/FFFFFF?text=Edukasi', // Ganti URL gambar edukasi
-                      width: 100,
-                      height: 80,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        width: 100,
-                        height: 80,
-                        color: Colors.grey.shade300,
-                        child: const Center(
-                          child: Icon(Icons.image_not_supported),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
