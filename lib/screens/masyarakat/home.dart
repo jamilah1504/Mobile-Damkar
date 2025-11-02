@@ -1,18 +1,81 @@
 import 'package:flutter/material.dart';
-import '../masyarakat/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
+import './laporan/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
 
-class MasyarakatHomeScreen extends StatelessWidget {
+// --- 1. TAMBAHKAN IMPORT ---
+import 'package:shared_preferences/shared_preferences.dart';
+// import 'dart:convert'; // Diperlukan untuk jsonDecode dan base64Url
+
+// --- 2. UBAH MENJADI STATEFULWIDGET ---
+class MasyarakatHomeScreen extends StatefulWidget {
   const MasyarakatHomeScreen({super.key});
 
   @override
+  State<MasyarakatHomeScreen> createState() => _MasyarakatHomeScreenState();
+}
+
+class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
+  // --- 3. TAMBAHKAN STATE UNTUK NAMA PENGGUNA ---
+  String _userName = "Memuat..."; // Nilai default saat sedang loadin
+  int _userId = 0; // Simpan userId jika diperlukan
+
+  // Definisikan warna tema di sini agar bisa diakses di seluruh class
+  final Color primaryColor = Colors.red.shade800;
+  final Color secondaryColor = Colors.red.shade600;
+  final Color backgroundColor = Colors.grey.shade100;
+  final Color cardColor = Colors.white;
+  final Color textColor = Colors.black87;
+  final Color subtleTextColor = Colors.black54;
+
+  // --- 4. TAMBAHKAN initState UNTUK MEMUAT DATA ---
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  // --- 5. FUNGSI UNTUK MEMUAT DATA DARI TOKEN ---
+  Future<void> _loadUserData() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      
+      // Langsung ambil 'userName' dan 'userId'
+      final String? userName = prefs.getString('userName'); 
+      final int? userId = prefs.getInt('userId'); 
+
+      // --- PERBAIKAN UTAMA ADA DI SINI ---
+      // Pastikan KEDUA data ada sebelum melanjutkan
+      if (userName == null || userName.isEmpty || userId == null) {
+        // Jika salah satu data tidak ada, lempar error
+        // agar ditangkap oleh blok 'catch'
+        throw Exception("Data pengguna (nama atau ID) tidak lengkap di SharedPreferences");
+      }
+      // --- AKHIR PERBAIKAN ---
+
+      // Update UI (HANYA jika kedua data valid)
+      if (mounted) {
+        setState(() {
+          _userName = userName; 
+          _userId = userId; 
+        });
+      }
+    } catch (e) {
+      print("Gagal memuat data pengguna: $e");
+      // Blok 'catch' ini sekarang akan menangani 
+      // jika 'userName' HILANG atau 'userId' HILANG
+      if (mounted) {
+        setState(() {
+          _userName = "Tamu"; // Fallback
+          _userId = 0 ; // Fallback
+        });
+      }
+    }
+  }
+
+
+  // --- 7. PINDAHKAN LOGIKA BUILD KE DALAM STATE ---
+  @override
   Widget build(BuildContext context) {
-    // Definisikan warna tema
-    final Color primaryColor = Colors.red.shade800;
-    final Color secondaryColor = Colors.red.shade600;
-    final Color backgroundColor = Colors.grey.shade100;
-    final Color cardColor = Colors.white;
-    final Color textColor = Colors.black87;
-    final Color subtleTextColor = Colors.black54;
+    // Variabel warna sudah dipindah ke atas (di dalam State)
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -21,7 +84,6 @@ class MasyarakatHomeScreen extends StatelessWidget {
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
-            // Ganti dengan path logo Anda
             'Images/logo2.png',
             width: 40,
             height: 40,
@@ -41,11 +103,10 @@ class MasyarakatHomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Banner Image
+              // 1. Banner Image (tidak berubah)
               ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
                 child: Image.asset(
-                  // Ganti dengan path banner Anda
                   'Images/image.png',
                   height: 150,
                   fit: BoxFit.cover,
@@ -58,29 +119,47 @@ class MasyarakatHomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
+              // --- 8. TAMBAHKAN WIDGET SAMBUTAN ---
+              Text(
+                "Selamat Datang,",
+                style: TextStyle(
+                  fontSize: 18,
+                  color: subtleTextColor, // Pakai warna subtle
+                ),
+              ),
+              Text(
+                "Halo, $_userName - $_userId", // Menampilkan "Halo, Budi Santoso"
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+              const SizedBox(height: 24), // Beri jarak tambahan
+              // --- AKHIR PENAMBAHAN ---
+
               // 2. Tombol Lapor Utama
               _buildLaporSection(
-                context,
+                // 'context' tidak perlu dikirim,
+                // karena method ini ada di class State
                 primaryColor,
                 secondaryColor,
-              ), // Berikan context
+              ),
               const SizedBox(height: 24),
 
               // 3. Section Layanan
               _buildLayananSection(
-                context,
                 secondaryColor,
                 textColor,
-              ), // Berikan context
+              ),
               const SizedBox(height: 24),
 
               // 4. Section Materi Edukasi
               _buildEdukasiSection(
-                context,
                 cardColor,
                 textColor,
                 subtleTextColor,
-              ), // Berikan context
+              ),
               const SizedBox(height: 24),
             ],
           ),
@@ -92,55 +171,48 @@ class MasyarakatHomeScreen extends StatelessWidget {
           BottomNavigationBarItem(
             icon: Icon(Icons.history),
             label: 'Riwayat',
-          ), // Pastikan ikon dan label sesuai
+          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications),
             label: 'Notifikasi',
           ),
         ],
-        currentIndex: 0, // Indeks item yang aktif (Beranda)
+        currentIndex: 0,
         selectedItemColor: primaryColor,
         unselectedItemColor: Colors.grey,
-        // --- PERBAIKI LOGIKA onTap ---
         onTap: (index) {
-          // Aksi saat item navigasi ditekan
           if (index == 1) {
-            // Jika tombol Riwayat (indeks 1) ditekan
             Navigator.push(
-              // Gunakan push agar bisa kembali ke Beranda
               context,
               MaterialPageRoute(
                 builder: (context) => const RiwayatLaporanScreen(),
               ),
             );
           }
-          // Tambahkan logika untuk indeks lain jika perlu
-          // else if (index == 0) { /* Sudah di Beranda */ }
-          // else if (index == 2) { /* Navigasi ke Halaman Notifikasi */ }
         },
-        // --- AKHIR PERBAIKAN onTap ---
       ),
     );
   }
 
-  // Widget _buildLaporSection perlu context
+  // --- 9. PINDAHKAN HELPER METHOD KE DALAM STATE ---
+  // (dan hapus parameter 'BuildContext context' yang tidak perlu)
+
+  // Widget _buildLaporSection
   Widget _buildLaporSection(
-    BuildContext context,
     Color primaryColor,
     Color secondaryColor,
   ) {
     return Column(
       children: [
-        // ... (Container Lingkaran LAPOR tidak berubah)
-        Container(/* ... */),
-        const SizedBox(height: 16),
+        // Container Lingkaran (jika ada, tidak ada di kode Anda)
+        // Container(/* ... */),
+        // const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton.icon(
               onPressed: () {
-                // Navigasi ke halaman Lapor Via Teks
-                // Navigator.push(context, MaterialPageRoute(builder: (context) => const LaporTeksScreen()));
+                // Gunakan 'context' milik State
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Navigasi ke Lapor Teks')),
                 );
@@ -159,7 +231,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
             const SizedBox(width: 16),
             ElevatedButton.icon(
               onPressed: () {
-                // Logika untuk melakukan panggilan telepon
+                // Gunakan 'context' milik State
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Membuka Panggilan Telepon')),
                 );
@@ -181,9 +253,8 @@ class MasyarakatHomeScreen extends StatelessWidget {
     );
   }
 
-  // Widget _buildLayananSection perlu context
+  // Widget _buildLayananSection
   Widget _buildLayananSection(
-    BuildContext context,
     Color buttonColor,
     Color textColor,
   ) {
@@ -192,6 +263,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
       {
         'icon': Icons.local_fire_department,
         'label': 'Lapor\nKebakaran',
+        // Gunakan 'context' milik State
         'action': () => ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Navigasi ke Lapor Kebakaran')),
         ),
@@ -243,7 +315,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
               service['label'],
               buttonColor,
               textColor,
-              service['action'], // Tambahkan aksi
+              service['action'],
             );
           },
         ),
@@ -251,7 +323,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
     );
   }
 
-  // Widget _buildServiceButton perlu VoidCallback onPressed
+  // Widget _buildServiceButton (tidak berubah)
   Widget _buildServiceButton(
     IconData icon,
     String label,
@@ -260,7 +332,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
     VoidCallback onPressed,
   ) {
     return ElevatedButton(
-      onPressed: onPressed, // Gunakan callback yang diberikan
+      onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         backgroundColor: buttonColor,
         foregroundColor: Colors.white,
@@ -282,9 +354,8 @@ class MasyarakatHomeScreen extends StatelessWidget {
     );
   }
 
-  // Widget _buildEdukasiSection perlu context
+  // Widget _buildEdukasiSection
   Widget _buildEdukasiSection(
-    BuildContext context,
     Color cardColor,
     Color textColor,
     Color subtleTextColor,
@@ -305,7 +376,7 @@ class MasyarakatHomeScreen extends StatelessWidget {
           ),
           child: InkWell(
             onTap: () {
-              // Aksi saat card edukasi ditekan
+              // Gunakan 'context' milik State
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Membuka Detail Edukasi')),
               );
@@ -369,4 +440,4 @@ class MasyarakatHomeScreen extends StatelessWidget {
       ],
     );
   }
-}
+} // --- AKHIR DARI _MasyarakatHomeScreenState ---

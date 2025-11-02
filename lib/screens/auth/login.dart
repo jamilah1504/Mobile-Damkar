@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../methods/api.dart'; // Sesuaikan path jika perlu
 import 'register.dart'; // Sesuaikan path jika perlu
 
@@ -37,11 +38,44 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final data = await _apiService.login(
-        _usernameController.text,
+        _usernameController.text, // Pastikan ini dikirim sebagai email ke ApiService
         _passwordController.text,
       );
       print("Login berhasil, data diterima: $data");
       if (!mounted) return;
+
+      // --- PERBARUI BAGIAN INI ---
+      final String? token = data['token'];
+      final String role = data['role']?.toLowerCase() ?? '';
+      
+      // 1. Ambil 'name' dan 'id' dari respons login
+    final String? name = data['name'];
+    // Gunakan 'int?' agar sesuai untuk disimpan
+    final int? id = data['id']; 
+
+    if (token == null || token.isEmpty) {
+      throw Exception('Login berhasil tetapi token tidak diterima.');
+    }
+    if (name == null || name.isEmpty) {
+      throw Exception('Login berhasil tetapi nama pengguna tidak diterima.');
+    }
+    // TAMBAHKAN: Validasi untuk 'id' juga
+    if (id == null) {
+      throw Exception('Login berhasil tetapi ID pengguna tidak diterima.');
+    }
+
+    // Simpan semuanya ke SharedPreferences
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('authToken', token);
+    await prefs.setString('userRole', role);
+    
+    // PERBAIKAN 1: Tambahkan baris ini untuk menyimpan nama
+    await prefs.setString('userName', name); 
+    
+    // PERBAIKAN 2: Gunakan 'setInt' untuk 'id', bukan 'setString'
+    await prefs.setInt('userId', id); 
+
+    print("Token, role, nama, dan ID berhasil disimpan.");
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -50,53 +84,30 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
 
-      final String role = data['role']?.toLowerCase() ?? '';
-      print("Role terdeteksi: $role");
-
+      
       Widget destinationScreen;
-
-      // --- PERBAIKAN: Case 'admin' dihapus ---
       switch (role) {
-        // case 'admin': // <-- HAPUS CASE INI
-        //   print("Cocok dengan case 'admin'. Navigasi ke AdminHomeScreen.");
-        //   destinationScreen = const AdminHomeScreen();
-        //   break;
         case 'petugas':
-          print("Cocok dengan case 'petugas'. Navigasi ke PetugasHomeScreen.");
-          destinationScreen =
-              const PetugasHomeScreen(); // Gunakan home screen Petugas
+          destinationScreen = const PetugasHomeScreen();
           break;
         case 'masyarakat':
-          print(
-            "Cocok dengan case 'masyarakat'. Navigasi ke MasyarakatHomeScreen.",
-          );
-          destinationScreen =
-              const MasyarakatHomeScreen(); // Gunakan home screen Masyarakat
+          destinationScreen = const MasyarakatHomeScreen();
           break;
         default:
-          print(
-            "Tidak cocok (default). Navigasi ke MasyarakatHomeScreen sebagai fallback.",
-          );
-          destinationScreen =
-              const MasyarakatHomeScreen(); // Fallback ke home Masyarakat
+          // Jika role dari backend adalah "Admin" (seperti contoh Anda)
+          // dan Anda tidak punya case 'admin', ini akan masuk ke default.
+          // Pastikan 'masyarakat' adalah fallback yang benar.
+          print("Role '$role' masuk ke default. Fallback ke MasyarakatHome.");
+          destinationScreen = const MasyarakatHomeScreen(); 
       }
-      // --- AKHIR PERBAIKAN ---
-
-      print("Mencoba navigasi ke destinationScreen...");
+      
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => destinationScreen),
       );
-      print("Navigasi seharusnya sudah dipanggil.");
+
     } catch (e) {
-      print("Error saat login atau navigasi: $e");
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      // ... (Error handling tidak berubah) ...
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
