@@ -1,18 +1,19 @@
 import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
+// --- PERBAIKAN DI SINI ---
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart'; // <-- Tambahan untuk debugPrint
+// -------------------------
+import '../models/edukasi.dart';
+import '../models/laporan.dart';
+import '../models/laporan_lapangan.dart';
 
 class ApiService {
-  // <-- 2. UBAH _dio MENJADI 'late'
   late Dio _dio; 
-  
-  // URL untuk emulator Android. Ganti ke localhost jika testing di web
-  //final String _baseUrl = 'http://10.0.2.2:5000/api';
-  final String _baseUrl = 'http://localhost:5000/api'; // <-- Gunakan ini untuk web
 
-  // --- 3. TAMBAHKAN CONSTRUCTOR ---
+  final String _baseUrl = 'http://localhost:5000/api';  
   ApiService() {
     final BaseOptions options = BaseOptions(
-      baseUrl: _baseUrl, // <-- Gunakan variabel _baseUrl
+      baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 3),
       headers: {
@@ -22,29 +23,22 @@ class ApiService {
     );
 
     _dio = Dio(options);
-
-    // --- 4. TAMBAHKAN INTERCEPTOR OTOMATIS ---
     _dio.interceptors.add(
       QueuedInterceptorsWrapper(
-        // (handler) akan "menjeda" request
         onRequest: (options, handler) async {
-          // Tentukan endpoint mana yang TIDAK perlu token
           final bool isAuthRequest = options.path == '/auth/login' || 
                                      options.path == '/auth/register';
+           if (isAuthRequest) {
+             return handler.next(options); 
+           }
 
-          if (isAuthRequest) {
-            // Jika ini request login/register, lanjutkan tanpa token
-            return handler.next(options); 
-          }
-
-          // 1. Ambil token dari SharedPreferences
+          // Baris ini sekarang valid karena sudah di-import
           final SharedPreferences prefs = await SharedPreferences.getInstance();
           final String? token = prefs.getString('authToken');
 
           if (token == null || token.isEmpty) {
-            // Jika token tidak ada (misal: belum login)
-            // Anda bisa menghentikan request dengan error
-            print('Interceptor: Token tidak ditemukan. Request dibatalkan.');
+            // --- Ganti print -> debugPrint ---
+            debugPrint('Interceptor: Token tidak ditemukan. Request dibatalkan.');
             return handler.reject(
               DioException(
                 requestOptions: options,
@@ -53,45 +47,35 @@ class ApiService {
             );
           }
 
-          // 2. Tambahkan token ke header
-          print('Interceptor: Token ditemukan, ditambahkan ke header.');
+          // --- Ganti print -> debugPrint ---
+          debugPrint('Interceptor: Token ditemukan, ditambahkan ke header.');
           options.headers['Authorization'] = 'Bearer $token';
 
-          // 3. Lanjutkan request dengan header baru
           return handler.next(options);
         },
         
         onResponse: (response, handler) {
-          // Lanjutkan response (tidak perlu diubah)
           return handler.next(response);
         },
         
         onError: (err, handler) async {
-          // --- 5. [OPSIONAL] LOGIC UNTUK REFRESH TOKEN ---
-          // Jika token expired (misal status 401)
           if (err.response?.statusCode == 401) {
-            // Di sini Anda bisa menambahkan logic untuk "refresh token"
-            // jika API Anda mendukungnya.
-            // Untuk saat ini, kita hanya teruskan error-nya.
-            print('Interceptor: Terjadi Error 401 (Unauthorized)');
+            // --- Ganti print -> debugPrint ---
+            debugPrint('Interceptor: Terjadi Error 401 (Unauthorized)');
           }
-          return handler.next(err); // Teruskan error
+          return handler.next(err); 
         },
       ),
     );
   }
-  // --- AKHIR CONSTRUCTOR ---
 
-
-  // Fungsi login (tidak berubah, sudah benar)
+  // ... (Fungsi login dan register tidak perlu diubah) ...
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await _dio.post(
         '/auth/login',
         data: {'email': email, 'password': password},
       );
-      // Response.data akan berisi (misal):
-      // { "message": "Login berhasil", "token": "...", "role": "..." }
       return response.data;
     } on DioException catch (e) {
       if (e.response != null && e.response?.data != null) {
@@ -104,7 +88,6 @@ class ApiService {
     }
   }
 
-  // Fungsi register (tidak berubah, sudah benar)
   Future<Map<String, dynamic>> register(
     String name,
     String username,
@@ -133,14 +116,10 @@ class ApiService {
     }
   }
 
-  // --- 6. CONTOH FUNGSI YANG MEMERLUKAN LOGIN ---
-  // (Misalnya mengambil data profil atau laporan)
-  
+
   Future<Map<String, dynamic>> getMyProfile() async {
     try {
-      // Anda TIDAK PERLU menambahkan header token di sini.
-      // Interceptor akan melakukannya secara otomatis.
-      final response = await _dio.get('/users/profile'); // Sesuaikan endpoint
+      final response = await _dio.get('/users/profile'); 
       return response.data;
     } on DioException catch (e) {
       if (e.response != null && e.response?.data != null) {
@@ -153,14 +132,12 @@ class ApiService {
     }
   }
 
-  // CONTOH FUNGSI POST (Misal membuat laporan)
   Future<Map<String, dynamic>> createLaporan(String isiLaporan) async {
     try {
       final response = await _dio.post(
-        '/laporan/create', // Sesuaikan endpoint
+        '/laporan/create', 
         data: {'isi_laporan': isiLaporan},
       );
-      // Interceptor juga otomatis menambahkan token di sini
       return response.data;
     } on DioException catch (e) {
       if (e.response != null && e.response?.data != null) {
@@ -170,6 +147,77 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Terjadi kesalahan yang tidak diketahui: $e');
+    }
+  }
+
+  Future<List<Edukasi>> getEdukasi() async {
+    try {
+      final response = await _dio.get('/edukasi');
+
+      // --- Ganti print -> debugPrint ---
+      debugPrint('API Response: ${response.data}');
+
+      if (response.data is Map<String, dynamic>) {
+        final dataMap = response.data as Map<String, dynamic>;
+
+        if (dataMap['data'] is List) {
+          return (dataMap['data'] as List)
+              .map((item) => Edukasi.fromJson(item as Map<String, dynamic>))
+              .toList();
+        } else {
+          throw Exception(
+            'Field "data" bukan List. Diterima: ${dataMap['data']}',
+          );
+        }
+      } else {
+        throw Exception('Respons bukan JSON Map. Diterima: ${response.data}');
+      }
+    } on DioException catch (e) {
+      if (e.response != null) {
+        // --- Ganti print -> debugPrint ---
+        debugPrint('Server Error: ${e.response?.statusCode}');
+        debugPrint('Body: ${e.response?.data}');
+        throw Exception('Server error: ${e.response?.statusCode}');
+      } else {
+        throw Exception(
+          'Tidak bisa terhubung ke server. Pastikan backend jalan.',
+        );
+      }
+    } catch (e) {
+      // --- Ganti print -> debugPrint ---
+      debugPrint('Parsing Error: $e');
+      throw Exception('Gagal memproses data: $e');
+   }
+  }
+
+  Future<List<Laporan>> getRiwayatLaporan(int userId) async {
+    try {
+      final response = await _dio.get('/reports');
+
+      // --- Ganti print -> debugPrint ---
+      debugPrint('Raw Response: ${response.data}');
+
+      if (response.data is! Map<String, dynamic>) {
+        throw Exception('Format respons tidak valid');
+      }
+
+      final Map<String, dynamic> json = response.data;
+      final List<dynamic> dataList = json['data'] as List<dynamic>;
+
+      return dataList
+          .where((r) => r['pelaporId'] == userId)
+          .map((json) => Laporan.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      if (e.response != null) {
+        throw Exception(e.response?.data['message'] ?? 'Gagal memuat laporan');
+      } else {
+        throw Exception('Tidak dapat terhubung ke server');
+      }
+    } catch (e) {
+      // --- Ganti print -> debugPrint ---
+      debugPrint('Error parsing laporan: $e');
+      rethrow;
     }
   }
 }
