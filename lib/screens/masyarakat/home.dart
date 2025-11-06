@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-// import '../masyarakat/RiwayatLaporanScreen.dart'; // <-- DIHAPUS, URI does not exist (Error Baris 2)
 import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
 import 'DetailEdukasiScreen.dart'; // Halaman detail
 import '../../models/edukasi.dart';
@@ -44,12 +43,12 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     // Kita bungkus dalam setState agar jika fungsi ini dipanggil lagi nanti,
     // FutureBuilder akan tahu untuk me-refresh.
     setState(() {
-      futureEdukasi = ApiService().getEdukasi(); 
+      futureEdukasi = ApiService().getEdukasi();
     });
-    
+
     // HAPUS BARIS INI
     // futureEdukasi = Future.value([]); // <-- HAPUS
-    
+
     debugPrint("CATATAN: Memanggil method 'getEdukasi' dari ApiService.");
   }
 
@@ -57,27 +56,29 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   Future<void> _loadUserData() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      
-      final String? userName = prefs.getString('userName'); 
-      final int? userId = prefs.getInt('userId'); 
+
+      final String? userName = prefs.getString('userName');
+      final int? userId = prefs.getInt('userId');
 
       if (userName == null || userName.isEmpty || userId == null) {
-        throw Exception("Data pengguna (nama atau ID) tidak lengkap di SharedPreferences");
+        throw Exception(
+          "Data pengguna (nama atau ID) tidak lengkap di SharedPreferences",
+        );
       }
 
       if (mounted) {
         setState(() {
-          _userName = userName; 
-          _userId = userId; 
+          _userName = userName;
+          _userId = userId;
         });
       }
     } catch (e) {
       // Ganti 'print' dengan 'debugPrint' untuk praktik yang lebih baik
-      debugPrint("Gagal memuat data pengguna: $e"); 
+      debugPrint("Gagal memuat data pengguna: $e");
       if (mounted) {
         setState(() {
           _userName = "Tamu"; // Fallback
-          _userId = 0 ; // Fallback
+          _userId = 0; // Fallback
         });
       }
     }
@@ -129,20 +130,13 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
               const SizedBox(height: 24),
 
               // 2. Tombol Lapor Utama
-              _buildLaporSection(
-                context,
-                primaryColor,
-                secondaryColor,
-              ),
+              _buildLaporSection(context, primaryColor, secondaryColor),
               const SizedBox(height: 24),
 
               // 8. WIDGET SAMBUTAN
               Text(
                 "Selamat Datang,",
-                style: TextStyle(
-                  fontSize: 18,
-                  color: subtleTextColor,
-                ),
+                style: TextStyle(fontSize: 18, color: subtleTextColor),
               ),
               Text(
                 "Halo, $_userName - $_userId",
@@ -164,11 +158,11 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
 
               // 4. Section Materi Edukasi
               _buildEdukasiSection(
-                  context,
-                  cardColor,
-                  textColor,
-                  subtleTextColor,
-                ),
+                context,
+                cardColor,
+                textColor,
+                subtleTextColor,
+              ),
               const SizedBox(height: 24),
             ],
           ),
@@ -177,10 +171,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Riwayat',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications),
             label: 'Notifikasi',
@@ -193,9 +184,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           if (index == 1) {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => const RiwayatLaporanScreen(),
-              ),
+              MaterialPageRoute(builder: (context) => RiwayatLaporanScreen()),
             );
           }
         },
