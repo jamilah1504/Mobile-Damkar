@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_2/screens/masyarakat/Notifikasi.dart';
 // import '../masyarakat/RiwayatLaporanScreen.dart'; // <-- DIHAPUS, URI does not exist (Error Baris 2)
 import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; // Impor halaman riwayat
 import 'DetailEdukasiScreen.dart'; // Halaman detail
 import '../../models/edukasi.dart';
 import '../../methods/api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import './laporan/LaporanDarurat.dart';
 
 // --- PERBAIKAN 1: Ubah menjadi StatefulWidget ---
 class MasyarakatHomeScreen extends StatefulWidget {
@@ -194,7 +196,15 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const RiwayatLaporanScreen(),
+                builder: (context) => RiwayatLaporan(),
+              ),
+            );
+          }
+          if (index == 2) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => NotifikasiPage(),
               ),
             );
           }
@@ -204,7 +214,6 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   }
 
   // --- Helper Widgets (digabung) ---
-
   Widget _buildLaporSection(
     BuildContext context,
     Color primaryColor,
@@ -212,13 +221,13 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   ) {
     return Column(
       children: [
-        // Container Lingkaran (Anda bisa isi ...)
+        // Container Lingkaran (Tombol SOS Mic)
         Container(
           width: 150,
           height: 150,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: secondaryColor, // Warna lingkaran luar
+            color: secondaryColor,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.2),
@@ -234,7 +243,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
               height: 130,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: primaryColor, // Warna lingkaran dalam
+                color: primaryColor,
               ),
               child: const Center(
                 child: Column(
@@ -257,13 +266,20 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           ),
         ),
         const SizedBox(height: 16),
+        
+        // Baris Tombol Navigasi
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // --- TOMBOL LAPOR VIA TEKS (DIUBAH DISINI) ---
             ElevatedButton.icon(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Navigasi ke Lapor Teks')),
+                // Navigasi ke halaman LaporanKejadianPage
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LaporanKejadianPage(),
+                  ),
                 );
               },
               icon: const Icon(Icons.text_fields),
@@ -277,12 +293,16 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                 ),
               ),
             ),
+            
             const SizedBox(width: 16),
+            
+            // --- TOMBOL TELEPON ---
             ElevatedButton.icon(
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Membuka Panggilan Telepon')),
                 );
+                // Nanti bisa diganti dengan logika url_launcher untuk telpon
               },
               icon: const Icon(Icons.phone),
               label: const Text('Telepon'),

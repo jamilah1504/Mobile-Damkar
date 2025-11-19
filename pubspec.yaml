@@ -32,6 +32,11 @@ dependencies:
     sdk: flutter
   dio: ^5.4.3+1
 
+  
+  image_picker: ^1.0.4  # Untuk ambil foto/video
+  geolocator: ^10.1.0   # Untuk ambil lokasi GPS
+  permission_handler: ^11.0.0 # Untuk izin akses
+  path: ^1.8.3          # Utilitas path file
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -40,6 +45,13 @@ dependencies:
   hexcolor: ^3.0.1
   intl: ^0.20.2
   url_launcher: ^6.2.0
+
+  video_player: ^2.8.1
+  chewie: ^1.7.1
+
+  # Tambahan untuk Map & Koordinat
+  flutter_map: ^6.0.0 
+  latlong2: ^0.9.0
 
 dev_dependencies:
   flutter_test:

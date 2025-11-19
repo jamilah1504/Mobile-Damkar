@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Kami membutuhkan akses kamera untuk mengambil foto dokumentasi kejadian.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kami membutuhkan akses mikrofon untuk merekam video kejadian.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Kami membutuhkan akses galeri untuk memilih foto kejadian.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Kami membutuhkan lokasi Anda untuk menandai titik kejadian secara akurat.</string>
 </dict>
 </plist>
