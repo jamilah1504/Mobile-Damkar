@@ -2,63 +2,50 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
-// Import paket Map
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Pastikan library di pubspec.yaml sudah lengkap:
+// dio, image_picker, geolocator, flutter_map, latlong2, shared_preferences
 
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class LaporanDarurat extends StatefulWidget {
+  const LaporanDarurat({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Laporan Kejadian',
-      theme: ThemeData(
-        primarySwatch: Colors.red,
-        scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-      ),
-      home: const LaporanKejadianPage(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
+  State<LaporanDarurat> createState() => _LaporanDaruratState();
 }
 
-class LaporanKejadianPage extends StatefulWidget {
-  const LaporanKejadianPage({Key? key}) : super(key: key);
-
-  @override
-  State<LaporanKejadianPage> createState() => _LaporanKejadianPageState();
-}
-
-class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
+class _LaporanDaruratState extends State<LaporanDarurat> {
   // --- KONTROLER TEXT ---
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _deskripsiController = TextEditingController();
   final TextEditingController _lokasiController = TextEditingController();
+  
+  // Default dropdown value
   String _selectedKebakaran = 'Kebakaran';
-  int _userId = 0; // Simpan userId jika diperlukan
+  // List opsi dropdown agar mudah divalidasi
+  final List<String> _kategoriList = ['Kebakaran', 'Non Kebakaran'];
+
+  int _userId = 0; 
+  
+  // Flag agar data argumen hanya diisi sekali
+  bool _isDataInitialized = false;
 
   // --- STATE LOGIKA ---
-  // Koordinat default (Contoh: Jakarta/Subang)
   LatLng _currentLocation = const LatLng(-6.5522, 107.7587); 
-  final MapController _mapController = MapController(); // Kontroler untuk menggerakkan map
+  final MapController _mapController = MapController(); 
   
   String _gpsStatus = 'Mencari lokasi...';
   bool _isLocating = false;
   bool _isSubmitting = false;
 
-  // Menggunakan XFile agar kompatibel dengan Web & Mobile tanpa dart:io error
   final List<XFile> _mediaFiles = [];
   final ImagePicker _picker = ImagePicker();
   final int _maxFiles = 5;
 
-  final String _baseUrl = 'http://localhost:5000/api'; // Ganti dengan IP laptop jika tes di HP Asli (misal 192.168.1.x)
+  // Ganti URL sesuai environment (localhost untuk web/emulator android 10.0.2.2)
+  final String _baseUrl = 'http://localhost:5000/api'; 
   final Dio _dio = Dio();
 
   @override
@@ -68,35 +55,76 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
     _loadUserData();
   }
 
-    // Fungsi dari State kedua (digabung)
-  Future<void> _loadUserData() async {
-    try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+  // --- FUNGSI PENERIMA DATA DARI LAPOR BUTTON (AI) ---
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Cek apakah data sudah pernah diisi agar tidak menimpa editan user saat set state
+    if (!_isDataInitialized) {
+      final args = ModalRoute.of(context)?.settings.arguments;
       
-      final int? userId = prefs.getInt('userId'); 
+      // Debugging: Cek data yang masuk
+      debugPrint("Data diterima di LaporanDarurat: $args");
 
-      if (userId == null) {
-        throw Exception("Data pengguna (ID) tidak lengkap di SharedPreferences");
-      }
-
-      if (mounted) {
+      if (args != null && args is Map) {
         setState(() {
-          _userId = userId; 
+          // 1. Isi Nama (Jika ada dari AI, jika null biarkan kosong/dari SharedPref)
+          if (args['namaPelapor'] != null && args['namaPelapor'].toString().isNotEmpty) {
+            _namaController.text = args['namaPelapor'];
+          }
+
+          // 2. Isi Detail Kejadian
+          if (args['detailKejadian'] != null) {
+            _deskripsiController.text = args['detailKejadian'];
+          }
+
+          // 3. Isi Alamat
+          if (args['alamatKejadian'] != null) {
+            _lokasiController.text = args['alamatKejadian'];
+          }
+
+          // 4. Isi Dropdown (Validasi apakah nilai dari AI ada di list dropdown kita)
+          if (args['jenisKejadian'] != null) {
+            String incidentType = args['jenisKejadian'].toString();
+            // Cocokkan case sensitive atau default ke Kebakaran jika tidak match
+            if (_kategoriList.contains(incidentType)) {
+              _selectedKebakaran = incidentType;
+            } else {
+              // Logika fallback sederhana: jika mengandung kata 'non', set non kebakaran
+              if (incidentType.toLowerCase().contains('non')) {
+                _selectedKebakaran = 'Non Kebakaran';
+              } else {
+                _selectedKebakaran = 'Kebakaran';
+              }
+            }
+          }
         });
       }
-    } catch (e) {
-      // Ganti 'print' dengan 'debugPrint' untuk praktik yang lebih baik
-      debugPrint("Gagal memuat data pengguna: $e"); 
-      if (mounted) {
-        setState(() {
-          _userId = 0 ; // Fallback
-        });
-      }
+      // Tandai bahwa inisialisasi selesai
+      _isDataInitialized = true;
     }
   }
 
+  Future<void> _loadUserData() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final int? userId = prefs.getInt('userId'); 
+      // Jika nama masih kosong dan ada nama di SharedPref, bisa diisi disini (opsional)
+      // final String? savedName = prefs.getString('userName');
+      // if (_namaController.text.isEmpty && savedName != null) _namaController.text = savedName;
 
-  // --- 1. LOGIKA MENGAMBIL LOKASI (GEOLOCATOR) ---
+      if (mounted) {
+        setState(() {
+          _userId = userId ?? 0; 
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat data pengguna: $e"); 
+    }
+  }
+
+  // --- 1. LOGIKA MENGAMBIL LOKASI ---
   Future<void> _getCurrentLocation() async {
     setState(() {
       _isLocating = true;
@@ -122,29 +150,23 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // Update koordinat dan pindahkan kamera map
       LatLng newPos = LatLng(position.latitude, position.longitude);
       setState(() {
         _currentLocation = newPos;
         _gpsStatus = 'GPS: ${newPos.latitude.toStringAsFixed(4)}, ${newPos.longitude.toStringAsFixed(4)}';
       });
       
-      // Gerakkan map ke lokasi GPS
       _mapController.move(newPos, 16.0);
 
     } catch (e) {
-      setState(() {
-        _gpsStatus = 'Gagal: $e';
-      });
+      setState(() => _gpsStatus = 'Gagal: $e');
       _showSnackBar('Gagal mendapatkan lokasi: $e', isError: true);
     } finally {
-      setState(() {
-        _isLocating = false;
-      });
+      setState(() => _isLocating = false);
     }
   }
 
-  // --- 2. LOGIKA PILIH FILE (IMAGE PICKER) ---
+  // --- 2. LOGIKA PILIH FILE ---
   Future<void> _pickMedia({required bool isVideo}) async {
     if (_mediaFiles.length >= _maxFiles) {
       _showSnackBar('Maksimal $_maxFiles file.', isError: true);
@@ -160,22 +182,14 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
       }
 
       if (pickedFile != null) {
-        setState(() {
-          _mediaFiles.add(pickedFile!);
-        });
+        setState(() => _mediaFiles.add(pickedFile!));
       }
     } catch (e) {
-      print('Error picking file: $e');
+      debugPrint('Error picking file: $e');
     }
   }
 
-  void _removeMedia(int index) {
-    setState(() {
-      _mediaFiles.removeAt(index);
-    });
-  }
-
-  // --- 3. LOGIKA PENGIRIMAN API (PERBAIKAN ERROR MULTIPART) ---
+  // --- 3. LOGIKA PENGIRIMAN API ---
   Future<void> _submitLaporan() async {
     if (_namaController.text.isEmpty ||
         _lokasiController.text.isEmpty ||
@@ -187,7 +201,8 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
     setState(() => _isSubmitting = true);
 
     try {
-      FormData formData = FormData.fromMap({
+      // Siapkan data fields
+      Map<String, dynamic> fields = {
         'namaPelapor': _namaController.text,
         'jenisKejadian': _selectedKebakaran,
         'detailKejadian': _deskripsiController.text,
@@ -195,11 +210,12 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
         'latitude': _currentLocation.latitude.toString(),
         'longitude': _currentLocation.longitude.toString(),
         'pelaporId': _userId,
-      });
+      };
 
-      // PERBAIKAN UTAMA: Gunakan fromBytes agar jalan di Web & Mobile
+      FormData formData = FormData.fromMap(fields);
+
+      // Tambahkan file (support Web & Mobile)
       for (var file in _mediaFiles) {
-        // Baca file sebagai bytes (aman untuk web & mobile)
         List<int> fileBytes = await file.readAsBytes(); 
         String fileName = file.name;
 
@@ -222,9 +238,10 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
         _namaController.clear();
         _deskripsiController.clear();
         _lokasiController.clear();
-        setState(() {
-          _mediaFiles.clear();
-        });
+        setState(() => _mediaFiles.clear());
+        
+        // Opsional: Kembali ke home setelah sukses
+        // Navigator.pop(context); 
       } else {
         throw Exception('Gagal mengirim. Kode: ${response.statusCode}');
       }
@@ -280,20 +297,21 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
                   child: DropdownButton<String>(
                     value: _selectedKebakaran,
                     isExpanded: true,
-                    items: ['Kebakaran', 'Non Kebakaran'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                    // Menggunakan list variable agar konsisten dengan validasi
+                    items: _kategoriList.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                     onChanged: (val) => setState(() => _selectedKebakaran = val!),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
 
-              // Deskripsi & Alamat
+              // Deskripsi & Alamat (Otomatis terisi dari AI)
               _buildInputContainer(child: TextField(controller: _deskripsiController, maxLines: 3, decoration: _inputDecoration('Detail Kejadian'))),
               const SizedBox(height: 12),
               _buildInputContainer(child: TextField(controller: _lokasiController, maxLines: 2, decoration: _inputDecoration('Alamat Lengkap'))),
               const SizedBox(height: 12),
 
-              // --- MAP SECTION (DIGANTI MENJADI INTERAKTIF) ---
+              // --- MAP SECTION ---
               Container(
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
                 padding: const EdgeInsets.all(16),
@@ -317,11 +335,11 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
                     Text(_gpsStatus, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     const SizedBox(height: 8),
                     
-                    // FLUTTER MAP (LEAFLET)
+                    // FLUTTER MAP
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: SizedBox(
-                        height: 250, // Tinggi Peta
+                        height: 250, 
                         child: Stack(
                           children: [
                             FlutterMap(
@@ -329,7 +347,6 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
                               options: MapOptions(
                                 initialCenter: _currentLocation,
                                 initialZoom: 15.0,
-                                // Logika Tap Peta: Pindahkan pin ke lokasi yang diklik
                                 onTap: (tapPosition, point) {
                                   setState(() {
                                     _currentLocation = point;
@@ -354,7 +371,6 @@ class _LaporanKejadianPageState extends State<LaporanKejadianPage> {
                                 ),
                               ],
                             ),
-                            // Tombol Loading di atas peta jika sedang mencari GPS
                             if (_isLocating)
                               Container(
                                 color: Colors.black12,

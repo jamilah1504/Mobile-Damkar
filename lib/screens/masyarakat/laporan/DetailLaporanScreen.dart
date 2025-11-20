@@ -174,19 +174,27 @@ class DetailLaporanScreen extends StatelessWidget {
                               child: Icon(Icons.local_fire_department, color: Colors.orange.shade800),
                             ),
                             const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("Insiden Terkait", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                                Text(
-                                  laporan.insidenTerkait!['statusInsiden'] ?? '-',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
-                                Text(
-                                  laporan.insidenTerkait!['judulInsiden'] ?? '',
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
-                              ],
+                            Expanded( 
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("Insiden Terkait", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                  Text(
+                                    laporan.insidenTerkait!['statusInsiden'] ?? '-',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  
+                                  // --- PERBAIKAN DI SINI ---
+                                  // Hapus widget Flexible pembungkus.
+                                  // Cukup Text saja, dia akan otomatis turun ke bawah.
+                                  Text(
+                                    laporan.insidenTerkait!['judulInsiden'] ?? '',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    softWrap: true, // Pastikan ini true (default)
+                                    overflow: TextOverflow.clip, // Atau visible
+                                  ),
+                                ],
+                              ),
                             )
                           ],
                         ),
