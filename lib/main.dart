@@ -1,8 +1,21 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 // Impor HomeScreen yang umum (pastikan path dan nama file benar)
 import 'screens/home.dart';
+import 'firebase_options.dart'; 
 
-void main() {
+
+void main() async { // 3. Jadikan 'async'
+  
+  // 4. Pastikan binding widget sudah siap sebelum inisialisasi
+  WidgetsFlutterBinding.ensureInitialized(); 
+  
+  // 5. INI ADALAH PERBAIKANNYA: Inisialisasi Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // 6. Jalankan aplikasi Anda
   runApp(const MyApp());
 }
 

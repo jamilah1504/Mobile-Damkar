@@ -3,10 +3,13 @@ import 'dart:async'; // Untuk Timer
 import 'dart:convert'; // Untuk JSON
 import 'package:http/http.dart' as http; // Untuk API
 import 'package:intl/intl.dart'; // Untuk format tanggal
+import 'package:intl/date_symbol_data_local.dart'; // Untuk lokalisasi tanggal
+import 'package:shared_preferences/shared_preferences.dart'; // <--- 1. IMPORT PENTING
 import 'daftarTugas.dart';
+import 'detailTugas.dart';
 
 // ---------------------------------------------------
-// MODEL DATA (Berdasarkan reportController.js)
+// MODEL DATA
 // ---------------------------------------------------
 class PanggilanLaporan {
   final int id;
@@ -16,6 +19,9 @@ class PanggilanLaporan {
   final String deskripsi;
   final String status;
   final DateTime timestampDibuat;
+  final String namaPelapor;
+  final double? latitude;
+  final double? longitude;
 
   PanggilanLaporan({
     required this.id,
@@ -25,28 +31,44 @@ class PanggilanLaporan {
     required this.deskripsi,
     required this.status,
     required this.timestampDibuat,
+    required this.namaPelapor,
+    this.latitude,
+    this.longitude,
   });
 
   factory PanggilanLaporan.fromJson(Map<String, dynamic> json) {
-    // 'Insiden' bisa jadi null jika ada data yg tidak konsisten
     final insiden = json['Insiden'] as Map<String, dynamic>?;
+    String? alamat = json['alamatKejadian'];
+    double? lat = json['latitude'] != null
+        ? (json['latitude'] as num).toDouble()
+        : null;
+    double? long = json['longitude'] != null
+        ? (json['longitude'] as num).toDouble()
+        : null;
+
+    if ((alamat == null || alamat.isEmpty) && lat != null && long != null) {
+      alamat = 'Titik GPS: $lat, $long';
+    }
 
     return PanggilanLaporan(
       id: json['id'] ?? 0,
-      judulInsiden: insiden?['judulInsiden'] ?? 'Judul Tidak Ada',
-      jenisKejadian: json['jenisKejadian'] ?? 'Tidak Diketahui',
-      alamatKejadian: json['alamatKejadian'] ?? 'Alamat Tidak Ada',
-      deskripsi: json['deskripsi'] ?? 'Deskripsi Tidak Ada',
+      judulInsiden: insiden?['judulInsiden'] ?? 'Laporan Masuk',
+      jenisKejadian: json['jenisKejadian'] ?? 'Kejadian Tidak Diketahui',
+      alamatKejadian: alamat ?? 'Lokasi Tidak Diketahui',
+      deskripsi: json['deskripsi'] ?? '-',
       status: json['status'] ?? 'Tidak Diketahui',
       timestampDibuat: json['timestampDibuat'] != null
           ? DateTime.parse(json['timestampDibuat'])
           : DateTime.now(),
+      namaPelapor: json['namaPelapor'] ?? (json['Pelapor']?['name']) ?? 'Warga',
+      latitude: lat,
+      longitude: long,
     );
   }
 }
 
 // ---------------------------------------------------
-// SCREEN UTAMA (Stateful)
+// SCREEN UTAMA
 // ---------------------------------------------------
 class PetugasHomeScreen extends StatefulWidget {
   const PetugasHomeScreen({super.key});
@@ -56,27 +78,30 @@ class PetugasHomeScreen extends StatefulWidget {
 }
 
 class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
-  int _selectedFilterIndex = 0; // 0: Aktif, 1: Riwayat, 2: Selesai
+  int _selectedFilterIndex = 0;
   Timer? _responTimer;
-  int _sisaWaktuDetik = 0; // Timer dimulai saat tugas diterima
+  int _sisaWaktuDetik = 0;
   bool _timerBerjalan = false;
 
-  // Variabel untuk menampung data dari API
   late Future<void> _initData;
-  PanggilanLaporan? _panggilanDarurat; // Status 'Menunggu Verifikasi'
-  PanggilanLaporan? _tugasBerjalan; // Status 'Diproses'
-  List<PanggilanLaporan> _laporanRiwayat = []; // Status 'Ditolak'
-  List<PanggilanLaporan> _laporanSelesai = []; // Status 'Selesai'
+  PanggilanLaporan? _panggilanDarurat;
+  PanggilanLaporan? _tugasBerjalan;
+  List<PanggilanLaporan> _laporanRiwayat = [];
+  List<PanggilanLaporan> _laporanSelesai = [];
 
-  // Ganti 'localhost' dengan IP Anda jika testing di HP
-  final String _baseUrl =
-      'http://localhost:5000'; // 10.0.2.2 untuk Emulator Android
+  // Ganti dengan IP Anda
+  final String _baseUrl = 'http://localhost:5000';
 
   @override
   void initState() {
     super.initState();
-    // Memanggil API saat halaman pertama kali dimuat
-    _initData = _fetchPanggilan();
+    initializeDateFormatting('id_ID', null).then((_) {
+      if (mounted) {
+        setState(() {
+          _initData = _fetchPanggilan();
+        });
+      }
+    });
   }
 
   @override
@@ -85,99 +110,118 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     super.dispose();
   }
 
+  // --- 2. HELPER: AMBIL TOKEN ---
+  Future<String?> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('token');
+  }
+
   // ---------------------------------------------------
-  // SERVICE API (Memanggil data & menyaring)
+  // SERVICE API
   // ---------------------------------------------------
   Future<void> _fetchPanggilan() async {
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/api/reports'));
+      final token =
+          await _getToken(); // Ambil token untuk GET juga (best practice)
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/api/reports'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         final List<PanggilanLaporan> semuaLaporan = data
             .map((json) => PanggilanLaporan.fromJson(json))
             .toList();
 
-        // Menyaring data berdasarkan status
         setState(() {
-          // --- PERBAIKAN DIMULAI DI SINI ---
-
-          // Panggilan darurat baru (hanya ambil 1 yang paling baru)
           try {
             _panggilanDarurat = semuaLaporan.firstWhere(
               (p) => p.status == 'Menunggu Verifikasi',
             );
           } catch (e) {
-            _panggilanDarurat = null; // Set ke null jika tidak ada
+            _panggilanDarurat = null;
           }
 
-          // Tugas yang sedang berjalan (hanya ambil 1)
           try {
             _tugasBerjalan = semuaLaporan.firstWhere(
               (p) => p.status == 'Diproses',
             );
           } catch (e) {
-            _tugasBerjalan = null; // Set ke null jika tidak ada
+            _tugasBerjalan = null;
           }
 
-          // --- PERBAIKAN SELESAI DI SINI ---
-
-          // Daftar untuk filter "Riwayat" (contoh: Ditolak)
           _laporanRiwayat = semuaLaporan
               .where((p) => p.status == 'Ditolak')
               .toList();
-
-          // Daftar untuk filter "Selesai"
           _laporanSelesai = semuaLaporan
               .where((p) => p.status == 'Selesai')
               .toList();
 
-          // Logika untuk timer
           if (_tugasBerjalan != null && !_timerBerjalan) {
-            // Jika ada tugas 'Diproses' dan timer belum jalan, mulai timer
             _startResponTimer();
           } else if (_tugasBerjalan == null) {
-            // Jika tidak ada tugas 'Diproses', matikan timer
             _responTimer?.cancel();
             _timerBerjalan = false;
           }
         });
       } else {
-        throw Exception(
-          'Gagal memuat laporan (Status: ${response.statusCode})',
-        );
+        throw Exception('Gagal memuat laporan: ${response.statusCode}');
       }
     } catch (e) {
-      // Tampilkan error di UI
-      throw Exception('Gagal terhubung ke server: $e');
+      // Silent error atau print log
+      print('Error fetch: $e');
     }
   }
 
-  // ---------------------------------------------------
-  // SERVICE API (Update Status Laporan)
-  // ---------------------------------------------------
+  // --- 3. UPDATE: TERIMA TUGAS (Pakai API Tugas Baru & Token) ---
   Future<void> _terimaTugas(int laporanId) async {
     try {
-      final response = await http.put(
-        Uri.parse('$_baseUrl/api/reports/$laporanId/status'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'status': 'Diproses'}),
+      final token = await _getToken();
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Token tidak ditemukan, login ulang.')),
+        );
+        return;
+      }
+
+      // PANGGIL API START TUGAS (Sama seperti di detailTugas)
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/tugas/start'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // KIRIM TOKEN
+        },
+        body: json.encode({
+          'insidenId': laporanId,
+        }), // Laporan ID dianggap Insiden ID
       );
 
       if (response.statusCode == 200) {
-        // Jika berhasil update, panggil ulang data untuk refresh halaman
+        // Refresh data agar status berubah jadi 'Diproses' dan Timer jalan
         setState(() {
           _initData = _fetchPanggilan();
         });
+
+        // Mulai Timer UI Manual agar instan
+        _startResponTimer();
       } else {
-        // Tampilkan pesan error jika gagal
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menerima tugas: ${response.body}')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Gagal: ${response.body}')));
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -185,22 +229,18 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
   // LOGIKA TIMER
   // ---------------------------------------------------
   void _startResponTimer() {
-    _responTimer?.cancel(); // Hentikan timer sebelumnya
+    _responTimer?.cancel();
     setState(() {
-      _sisaWaktuDetik = 85; // Set sisa waktu
-      _timerBerjalan = true; // Set flag
+      _sisaWaktuDetik =
+          0; // Mulai dari 0 (count up) atau set durasi jika count down
+      _timerBerjalan = true;
     });
 
+    // Contoh Timer Count UP (Menghitung lama perjalanan)
     _responTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_sisaWaktuDetik > 0) {
+      if (mounted) {
         setState(() {
-          _sisaWaktuDetik--;
-        });
-      } else {
-        timer.cancel();
-        setState(() {
-          _timerBerjalan = false;
-          // TODO: Tambahkan logika jika waktu habis
+          _sisaWaktuDetik++;
         });
       }
     });
@@ -213,7 +253,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
   }
 
   // ---------------------------------------------------
-  // METHOD BUILD (UI)
+  // UI BUILD
   // ---------------------------------------------------
   @override
   Widget build(BuildContext context) {
@@ -225,7 +265,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     return Scaffold(
       backgroundColor: backgroundColor,
       appBar: AppBar(
-        // ... (AppBar Anda tidak berubah)
         backgroundColor: primaryColor,
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
@@ -246,31 +285,21 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
           ),
         ],
       ),
-      // Gunakan FutureBuilder untuk menunggu API
       body: FutureBuilder<void>(
         future: _initData,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          // Error handling yang lebih soft (tampilkan UI kosong dulu jika error)
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text('Error: ${snapshot.error}'),
-              ),
-            );
-          }
-
-          // Jika data berhasil dimuat, tampilkan body
           return SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Banner Image (Tidak berubah)
+                  // 1. Banner
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12.0),
                     child: Image.asset(
@@ -286,7 +315,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 2. Judul Dashboard & Filter (Tidak berubah)
+                  // 2. Dashboard & Filter
                   const Text(
                     'Dashboard',
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -295,7 +324,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                   _buildFilterButtons(secondaryColor),
                   const SizedBox(height: 20),
 
-                  // 3. KONTEN DINAMIS BERDASARKAN FILTER
+                  // 3. Konten Dinamis
                   _buildFilteredContent(
                     primaryColor,
                     secondaryColor,
@@ -304,8 +333,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
 
                   const SizedBox(height: 20),
 
-                  // 4. Kartu Sisa Waktu Respon
-                  // Tampil HANYA jika timer berjalan (setelah tugas diterima)
+                  // 4. Timer Card (Tampil jika timer jalan)
                   if (_timerBerjalan) _buildSisaWaktuCard(accentColor),
                 ],
               ),
@@ -314,7 +342,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
         },
       ),
       bottomNavigationBar: BottomNavigationBar(
-        // ... (BottomNavBar Anda tidak berubah)
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
@@ -341,14 +368,12 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
   }
 
   // ---------------------------------------------------
-  // WIDGET HELPER
+  // WIDGETS
   // ---------------------------------------------------
 
-  // Widget untuk menampilkan konten berdasarkan filter
   Widget _buildFilteredContent(Color primary, Color secondary, Color accent) {
     switch (_selectedFilterIndex) {
       case 0: // AKTIF
-        // Tampilkan Panggilan Darurat JIKA ADA
         if (_panggilanDarurat != null) {
           return _buildPanggilanDaruratCard(
             _panggilanDarurat!,
@@ -357,11 +382,9 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             accent,
           );
         }
-        // Tampilkan Tugas Berjalan JIKA ADA
         if (_tugasBerjalan != null) {
           return _buildTugasBerjalanCard(_tugasBerjalan!, accent);
         }
-        // Jika tidak ada keduanya
         return const Center(
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 40.0),
@@ -386,11 +409,9 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     }
   }
 
-  // Widget untuk tombol filter
   Widget _buildFilterButtons(Color activeColor) {
     final List<String> filters = ['Aktif', 'Riwayat', 'Selesai'];
     return Row(
-      // ... (Tidak berubah)
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(filters.length, (index) {
         bool isActive = _selectedFilterIndex == index;
@@ -418,14 +439,12 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     );
   }
 
-  // Widget untuk kartu panggilan darurat BARU (Status: Menunggu Verifikasi)
   Widget _buildPanggilanDaruratCard(
     PanggilanLaporan panggilan,
     Color primaryColor,
     Color secondaryColor,
     Color accentColor,
   ) {
-    // Format tanggal
     final String tgl = DateFormat(
       'dd MMM yyyy, HH:mm',
       'id_ID',
@@ -441,7 +460,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              // ... (Icon Panggilan Darurat tidak berubah)
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Row(
@@ -464,7 +482,21 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    // TODO: Aksi tombol detail (buka halaman detail)
+                    // KE HALAMAN DETAIL (Callback onTerimaTugas agar state Home terupdate)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DetailTugasScreen(
+                          laporan: panggilan,
+                          onTerimaTugas: () {
+                            setState(() {
+                              _initData = _fetchPanggilan();
+                              _startResponTimer();
+                            });
+                          },
+                        ),
+                      ),
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
@@ -478,9 +510,9 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            // Data dari API
+
             Text(
-              panggilan.judulInsiden, // 'KEBAKARAN - Gedung JTIK...'
+              '${panggilan.jenisKejadian.toUpperCase()} - ${panggilan.namaPelapor}',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -488,32 +520,42 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            // Data dari API
-            Text(
-              panggilan.alamatKejadian, // 'Jl. Airlangga...'
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
-                fontSize: 14,
-              ),
+
+            Row(
+              children: [
+                const Icon(Icons.location_on, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    panggilan.alamatKejadian,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            // Data dari API
+
             Text(
-              tgl, // '22 Sep 2025, 09.15'
+              tgl,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.8),
                 fontSize: 12,
               ),
             ),
             const SizedBox(height: 16),
-            // Tombol "TERIMA"
+
             ElevatedButton(
               onPressed: () {
-                // Panggil API untuk update status
                 _terimaTugas(panggilan.id);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: accentColor, // Warna biru
+                backgroundColor: accentColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -531,7 +573,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     );
   }
 
-  // Widget baru untuk TUGAS BERJALAN (Status: Diproses)
   Widget _buildTugasBerjalanCard(
     PanggilanLaporan panggilan,
     Color accentColor,
@@ -540,9 +581,8 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
       'dd MMM yyyy, HH:mm',
       'id_ID',
     ).format(panggilan.timestampDibuat);
-
     return Card(
-      color: accentColor, // Warna biru
+      color: accentColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       elevation: 4,
       child: Padding(
@@ -566,7 +606,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              panggilan.judulInsiden,
+              panggilan.jenisKejadian.toUpperCase(),
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -592,10 +632,20 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
-                // TODO: Aksi tombol (misal: 'Sudah Tiba' atau 'Selesaikan Tugas')
+                // Arahkan ke DetailTugasScreen dengan state onTheWay (Anda perlu menyesuaikan DetailTugas untuk menerima state awal jika mau, atau biarkan DetailTugas mengecek status via API)
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DetailTugasScreen(
+                      laporan: panggilan,
+                      onTerimaTugas:
+                          () {}, // Tidak perlu callback karena sudah berjalan
+                    ),
+                  ),
+                );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green, // Warna hijau
+                backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -603,7 +653,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                 ),
               ),
               child: const Text(
-                'UPDATE STATUS (Contoh)',
+                'LIHAT DETAIL / UPDATE',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
@@ -613,11 +663,8 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     );
   }
 
-  // Widget untuk kartu sisa waktu respon
   Widget _buildSisaWaktuCard(Color accentColor) {
-    // Tampilan card ini tidak berubah
     return Card(
-      // ... (Styling tidak berubah)
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       elevation: 2,
       child: Padding(
@@ -630,7 +677,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Sisa Waktu Respon',
+                  'Waktu Respon Berjalan',
                   style: TextStyle(color: Colors.black54),
                 ),
                 Text(
@@ -649,7 +696,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     );
   }
 
-  // Widget untuk menampilkan daftar (Riwayat / Selesai)
   Widget _buildListFromData(List<PanggilanLaporan> list, String pesanKosong) {
     if (list.isEmpty) {
       return Center(
@@ -659,7 +705,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
         ),
       );
     }
-
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -670,16 +715,13 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
           'dd MMM yyyy',
           'id_ID',
         ).format(laporan.timestampDibuat);
-
         return Card(
           margin: const EdgeInsets.only(bottom: 8),
           child: ListTile(
-            title: Text(laporan.judulInsiden),
+            title: Text(laporan.jenisKejadian),
             subtitle: Text(laporan.alamatKejadian),
             trailing: Text(tgl),
-            onTap: () {
-              // TODO: Aksi ke halaman detail
-            },
+            onTap: () {},
           ),
         );
       },
