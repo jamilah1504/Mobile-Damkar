@@ -10,6 +10,7 @@ import '../../models/edukasi.dart';
 import '../../methods/api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import './laporan/LaporanDarurat.dart';
+import './DaftarKunjungan.dart';
 
 class MasyarakatHomeScreen extends StatefulWidget {
   const MasyarakatHomeScreen({super.key});
@@ -314,9 +315,14 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
       {
         'icon': Icons.book,
         'label': 'Daftar\nKunjungan',
-        'action': () => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Navigasi ke Daftar Kunjungan')),
-        ),
+        'action': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const DaftarKunjunganScreen(),
+            ),
+          );
+        },
       },
       {
         'icon': Icons.school,

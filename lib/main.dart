@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 // Impor HomeScreen yang umum (pastikan path dan nama file benar)
 import 'screens/home.dart';
 
@@ -22,6 +23,16 @@ class MyApp extends StatelessWidget {
       home: const HomeScreen(),
       // --- AKHIR PERUBAHAN ---
       debugShowCheckedModeBanner: false,
+      // Tambahkan localizations untuk DatePicker dan widget lainnya
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en', 'US'), // English (default)
+        Locale('id', 'ID'), // Bahasa Indonesia
+      ],
     );
   }
 }
