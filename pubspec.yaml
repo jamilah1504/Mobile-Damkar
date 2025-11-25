@@ -30,8 +30,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   dio: ^5.4.3+1
 
+  
+  image_picker: ^1.0.4  # Untuk ambil foto/video
+  geolocator: ^10.1.0   # Untuk ambil lokasi GPS
+  permission_handler: ^11.0.0 # Untuk izin akses
+  path: ^1.8.3          # Utilitas path file
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -45,9 +52,18 @@ dependencies:
   google_sign_in: ^7.2.0
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
-  image_picker: ^1.2.1
 
-  
+  file_picker: ^8.0.0
+
+  video_player: ^2.8.1
+  chewie: ^1.7.1
+
+  flutter_sound: ^9.2.13     # Untuk merekam audio
+  path_provider: ^2.1.1      # Untuk menyimpan file audio sementara
+  lucide_icons: 0.257.0
+  universal_html: ^2.2.4
+
+  fl_chart: ^0.66.0 
 
 dev_dependencies:
   flutter_test:
