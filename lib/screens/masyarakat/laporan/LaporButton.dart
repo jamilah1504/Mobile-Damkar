@@ -1,345 +1,582 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data'; // Untuk Uint8List
-
-import 'package:flutter/foundation.dart' show kIsWeb; // Untuk cek apakah berjalan di Web
+import 'dart:io'; // Tetap ada untuk Mobile, tapi kita handle Web secara khusus
+import 'package:flutter/foundation.dart'; // PENTING: Untuk cek kIsWeb
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_sound/flutter_sound.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart'; // Hanya dipakai jika !kIsWeb
-import 'package:http_parser/http_parser.dart'; // <--- TAMBAHKAN INI
-import 'LaporanDarurat.dart';
+import 'package:http_parser/http_parser.dart'; // Tambahkan ini di pubspec.yaml jika belum ada
+
+// ==========================================
+// 1. MODELS & SERVICES
+// ==========================================
+
+class LaporData {
+  String? namaPelapor;
+  String? jenisKejadian;
+  String? detailKejadian;
+  String? alamatKejadian;
+  double? latitude;
+  double? longitude;
+  XFile? dokumen; // UBAH: Dari File? menjadi XFile?
+
+  LaporData({
+    this.namaPelapor,
+    this.jenisKejadian,
+    this.detailKejadian,
+    this.alamatKejadian,
+    this.latitude,
+    this.longitude,
+    this.dokumen,
+  });
+}
+
+class ApiService {
+  // Ganti URL sesuai IP komputer. Jika Web, localhost biasanya bisa (tergantung setting CORS backend)
+  // Jika Android Emulator: 10.0.2.2
+  static String get baseUrl {
+    if (kIsWeb) return 'http://localhost:5000/api'; 
+    return 'http://192.168.1.5:5000/api';
+  }
+
+  // UBAH PARAMETER: Terima XFile, bukan File
+  static Future<Map<String, dynamic>> analyzeVideo(XFile videoFile) async {
+    var uri = Uri.parse('$baseUrl/ai/analyze-report');
+    var request = http.MultipartRequest('POST', uri);
+
+    if (kIsWeb) {
+      // --- LOGIC KHUSUS WEB (Kirim Bytes) ---
+      var bytes = await videoFile.readAsBytes();
+      request.files.add(http.MultipartFile.fromBytes(
+        'file', // Nama field harus sama dengan backend
+        bytes,
+        filename: videoFile.name,
+        contentType: MediaType('video', 'mp4'), // Sesuaikan tipe file
+      ));
+    } else {
+      // --- LOGIC MOBILE (Kirim Path) ---
+      request.files.add(await http.MultipartFile.fromPath('file', videoFile.path));
+    }
+
+    var streamedResponse = await request.send();
+    var response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode != 200) {
+      throw Exception('Gagal menganalisa video: ${response.body}');
+    }
+    return jsonDecode(response.body);
+  }
+
+  static Future<void> submitLaporan(LaporData data) async {
+    if (data.latitude == null || data.longitude == null) {
+      throw Exception('Lokasi wajib diisi.');
+    }
+
+    var uri = Uri.parse('$baseUrl/reports');
+    var request = http.MultipartRequest('POST', uri);
+    request.fields['namaPelapor'] = data.namaPelapor ?? 'Anonim';
+    request.fields['jenisKejadian'] = data.jenisKejadian ?? 'Lainnya';
+    request.fields['detailKejadian'] = data.detailKejadian ?? '-';
+    request.fields['alamatKejadian'] = data.alamatKejadian ?? '-';
+    request.fields['latitude'] = data.latitude.toString();
+    request.fields['longitude'] = data.longitude.toString();
+
+    if (data.dokumen != null) {
+      
+      var mimeType = MediaType('video', 'mp4'); // Default fallback
+      
+      // Deteksi sederhana berdasarkan ekstensi agar lebih akurat
+      final ext = data.dokumen!.name.split('.').last.toLowerCase();
+      if (ext == 'mov') mimeType = MediaType('video', 'quicktime');
+      else if (ext == 'mkv') mimeType = MediaType('video', 'x-matroska');
+
+      if (kIsWeb) {
+        // --- LOGIC WEB ---
+        var bytes = await data.dokumen!.readAsBytes();
+        request.files.add(http.MultipartFile.fromBytes(
+          'dokumen',
+          bytes,
+          filename: data.dokumen!.name,
+          contentType: mimeType,
+        ));
+      } else {
+        // --- LOGIC MOBILE ---
+        request.files.add(await http.MultipartFile.fromPath(
+          'dokumen', 
+          data.dokumen!.path,
+          contentType: mimeType,
+        ));
+      }
+    }
+
+    var streamedResponse = await request.send();
+    
+    final respStr = await streamedResponse.stream.bytesToString();
+
+    if (streamedResponse.statusCode != 200 && streamedResponse.statusCode != 201) {
+      throw Exception('Gagal mengirim laporan: $respStr');
+    }
+  }
+}
+
+// ==========================================
+// 2. MAIN WIDGET
+// ==========================================
 
 class LaporButton extends StatefulWidget {
-  final Color primaryColor;
-  final Color secondaryColor;
-
-  const LaporButton({
-    super.key, 
-    required this.primaryColor, 
-    required this.secondaryColor
-  });
+  const LaporButton({super.key});
 
   @override
   State<LaporButton> createState() => _LaporButtonState();
 }
 
-class _LaporButtonState extends State<LaporButton> with SingleTickerProviderStateMixin {
-  // --- STATE VARIABLES ---
-  bool _isRecording = false;
+class _LaporButtonState extends State<LaporButton> {
+  // State
   bool _isLoading = false;
-  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  String _loadingText = 'MEMPROSES...';
   
-  // Di Web kita simpan URL Blob, di HP kita simpan path file
-  String? _recordedUrlOrPath; 
+  // UBAH: Gunakan XFile agar kompatibel Web & Mobile
+  XFile? _tempFile; 
+  Position? _tempLocation;
   
-  // Variabel Animasi
-  late AnimationController _animController;
-  late Animation<double> _pulseAnimation;
+  // Controller... (Sama seperti sebelumnya)
+  final _namaController = TextEditingController();
+  final _detailController = TextEditingController();
+  final _alamatController = TextEditingController();
+  String? _selectedJenisKejadian;
 
-  // --- SETUP URL BACKEND ---
-  // Jika di Emulator Android gunakan 10.0.2.2, Jika di Chrome gunakan localhost
-  String get baseUrl {
-    if (kIsWeb) return 'http://localhost:5000';
-    return 'http://10.0.2.2:5000';
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _initRecorder();
-    _initAnimation();
-  }
-
-  Future<void> _initRecorder() async {
-    await _recorder.openRecorder();
-    _recorder.setSubscriptionDuration(const Duration(milliseconds: 500));
-  }
-
-  void _initAnimation() {
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
-    _pulseAnimation = Tween<double>(begin: 0.0, end: 12.0).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
-    );
-  }
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void dispose() {
-    _recorder.closeRecorder();
-    _animController.dispose();
+    _namaController.dispose();
+    _detailController.dispose();
+    _alamatController.dispose();
     super.dispose();
   }
 
-  // --- LOGIC START RECORDING (UNIVERSAL) ---
-  Future<void> startRecording() async {
+  // --- Logic 1: Ambil Lokasi ---
+  Future<Position> _getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) throw Exception('GPS tidak aktif.');
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) throw Exception('Izin lokasi ditolak.');
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Izin lokasi ditolak permanen.');
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  // --- Logic 2: Handle File & AI Process ---
+ Future<void> _handleFileSelection(ImageSource source) async {
     try {
-      // 1. Cek Permission (Hanya untuk Android/iOS, Web biasanya otomatis prompt dari browser)
-      if (!kIsWeb) {
-        var status = await Permission.microphone.request();
-        if (status != PermissionStatus.granted) {
-          throw Exception("Izin mikrofon ditolak");
-        }
-      }
-
-      // 2. Tentukan Lokasi Simpan
-      String? path;
-      Codec codec;
-
-      if (kIsWeb) {
-        // --- WEB CONFIG ---
-        // Di Web, kita tidak butuh path spesifik, browser yang atur (Blob)
-        path = 'laporan_audio.webm'; 
-        codec = Codec.opusWebM; // Codec standar web modern
-      } else {
-        // --- MOBILE CONFIG ---
-        final tempDir = await getTemporaryDirectory();
-        path = '${tempDir.path}/laporan-audio.aac';
-        codec = Codec.aacADTS;
-      }
-
-      // 3. Mulai Rekam
-      await _recorder.startRecorder(
-        toFile: path,
-        codec: codec,
-      );
-      
-      // Mulai Animasi
-      _animController.repeat(reverse: true);
+      final XFile? pickedFile = await _picker.pickVideo(source: source);
+      if (pickedFile == null) return;
 
       setState(() {
-        _isRecording = true;
+        _isLoading = true;
+        _tempFile = pickedFile; // Langsung simpan XFile
+        _loadingText = 'MENCARI LOKASI...';
       });
 
-      if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Merekam... Silakan bicara.')),
-        );
-      }
+      // 1. Ambil Lokasi
+      final position = await _getCurrentLocation();
+      _tempLocation = position;
+
+      // 2. Analisa AI
+      setState(() => _loadingText = 'ANALISA AI...');
       
-    } catch (err) {
-      debugPrint("Error Start Recording: $err");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal merekam: $err')),
-        );
-      }
-    }
-  }
+      // Kirim XFile langsung ke ApiService
+      final aiResult = await ApiService.analyzeVideo(_tempFile!);
+      final extracted = aiResult['formData'];
 
-  // --- LOGIC STOP RECORDING (UNIVERSAL) ---
-  Future<void> stopRecording() async {
-    if (_recorder.isRecording) {
-      // stopRecorder mengembalikan path (Mobile) atau URL Blob (Web)
-      String? urlOrPath = await _recorder.stopRecorder();
-      
-      _animController.stop();
-      _animController.reset();
+      // ... (Validasi kelengkapan data sama seperti sebelumnya) ...
+      bool isDataComplete = (extracted['namaPelapor'] != null && extracted['namaPelapor'] != '') &&
+                            (extracted['jenisKejadian'] != null && extracted['jenisKejadian'] != '') &&
+                            (extracted['alamatKejadian'] != null && extracted['alamatKejadian'] != '');
 
-      setState(() {
-        _isRecording = false;
-        _isLoading = true; 
-        _recordedUrlOrPath = urlOrPath;
-      });
 
-      debugPrint("Recording stopped. Location: $_recordedUrlOrPath");
-
-      if (_recordedUrlOrPath != null) {
-        await sendAudioAndNavigate(_recordedUrlOrPath!);
+      if (isDataComplete) {
+        setState(() => _loadingText = 'MENGIRIM...');
+        await _executeSubmit(LaporData(
+          namaPelapor: extracted['namaPelapor'],
+          jenisKejadian: extracted['jenisKejadian'],
+          detailKejadian: extracted['detailKejadian'],
+          alamatKejadian: extracted['alamatKejadian'],
+          latitude: position.latitude,
+          longitude: position.longitude,
+          dokumen: _tempFile,
+        ));
       } else {
-         setState(() => _isLoading = false);
+        _prefillManualForm(extracted);
+        setState(() => _isLoading = false);
+        if (mounted) _showManualFormDialog();
       }
+
+    } catch (e) {
+      setState(() => _isLoading = false);
+      _showNotification('Error: ${e.toString()}', isError: true);
     }
   }
 
-  void handleButtonClick() {
-    if (_isLoading) return;
-    if (_isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
+  void _prefillManualForm(Map<String, dynamic> data) {
+    _namaController.text = data['namaPelapor'] ?? '';
+    _selectedJenisKejadian = data['jenisKejadian']; // Pastikan value match dengan dropdown
+    _detailController.text = data['detailKejadian'] ?? '';
+    _alamatController.text = data['alamatKejadian'] ?? '';
   }
 
-  // --- LOGIC API & NAVIGASI (UNIVERSAL UPLOAD) ---
-  Future<void> sendAudioAndNavigate(String pathOrUrl) async {
+  // --- Logic 3: Submit Final ---
+  Future<void> _executeSubmit(LaporData data) async {
     try {
-      debugPrint("=== MULAI PROSES UPLOAD AUDIO (WEB/MOBILE) ===");
-      
-      // 1. Siapkan Request Multipart
-      var requestVTT = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/ai/voice-to-text'));
-
-      http.MultipartFile audioMultipart;
-
-      if (kIsWeb) {
-        // --- KHUSUS WEB: Ambil Blob & Manipulasi Ekstensi ---
-        debugPrint("Fetching blob from browser: $pathOrUrl");
-        
-        final response = await http.get(Uri.parse(pathOrUrl));
-        final audioBytes = response.bodyBytes; 
-
-        // PERBAIKAN DISINI:
-        // Backend menolak .webm, jadi kita namai file sebagai .wav
-        // agar lolos filter 'uploadAudio.js'
-        audioMultipart = http.MultipartFile.fromBytes(
-          'audioFile', 
-          audioBytes,
-          filename: 'laporan_audio.wav', // <--- Ubah ekstensi jadi .wav atau .mp3
-          contentType: MediaType('audio', 'wav'), // <--- Paksa MIME type jadi wav
-        );
-      } else {
-        // --- KHUSUS MOBILE ---
-        audioMultipart = await http.MultipartFile.fromPath(
-          'audioFile', 
-          pathOrUrl
-        );
-      }
-
-      requestVTT.files.add(audioMultipart);
-      
-      // Kirim Request
-      var resVTTStream = await requestVTT.send();
-      var resVTT = await http.Response.fromStream(resVTTStream);
-      
-      debugPrint("[DEBUG VTT] Status Code: ${resVTT.statusCode}");
-      debugPrint("[DEBUG VTT] Body: ${resVTT.body}"); // Print body untuk lihat error detail
-
-      if (resVTT.statusCode != 200) {
-        // Ambil pesan error dari HTML jika backend mengembalikan HTML (seperti kasus error multer)
-        if (resVTT.body.contains("Error:")) {
-           throw Exception('Ditolak Backend: ${resVTT.body.split('<pre>')[1].split('<br>')[0]}');
-        }
-        throw Exception('Gagal Transkripsi (Status ${resVTT.statusCode})');
-      }
-      
-      final vttJson = jsonDecode(resVTT.body);
-      final transcript = vttJson['transcript'];
-      
-      debugPrint("[DEBUG VTT] Transcript: $transcript");
-
-      if (transcript == null || transcript.toString().isEmpty) {
-        throw Exception('Transkrip kosong');
-      }
-
-      // 2. Text to Form
-      final resTTF = await http.post(
-        Uri.parse('$baseUrl/api/ai/text-to-form'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'transcript': transcript}),
-      );
-
-      debugPrint("[DEBUG TTF] Status Code: ${resTTF.statusCode}");
-
-      if (resTTF.statusCode != 200) {
-        throw Exception('Gagal Ekstrak Form: ${resTTF.body}');
-      }
-      
-      final ttfJson = jsonDecode(resTTF.body);
-      final formData = ttfJson['formData'];
-      debugPrint("Data Form: ${formData}");
-      if (mounted) {
-        // Menggunakan MaterialPageRoute untuk pindah ke class LaporanDarurat
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            // Pastikan class LaporanDarurat sudah diimport di atas
-            builder: (context) => const LaporanDarurat(), 
-            
-            // Mengirim data lewat RouteSettings agar bisa diambil via 
-            // ModalRoute.of(context)!.settings.arguments di halaman tujuan
-            settings: RouteSettings(arguments: formData),
-          ),
-        );
-      }
-
-    } catch (err) {
-      debugPrint("=== ERROR TERJADI ===");
-      debugPrint(err.toString());
-      
-      if(mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal: $err'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
+      await ApiService.submitLaporan(data);
+      _showNotification('Laporan Berhasil Terkirim!', isError: false);
+      _resetState();
+    } catch (e) {
+      _showNotification(e.toString(), isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- UI BUILDER (TIDAK ADA PERUBAHAN) ---
+  void _resetState() {
+    setState(() {
+      _tempFile = null;
+      _tempLocation = null;
+      _namaController.clear();
+      _detailController.clear();
+      _alamatController.clear();
+      _selectedJenisKejadian = null;
+    });
+  }
+
+  // --- UI Helpers: Notifications & Popups ---
+
+  void _showNotification(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(isError ? Icons.error_outline : Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _showSourceMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Pilih Sumber Video", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            _buildSourceOption(
+              icon: Icons.videocam,
+              title: "Ambil Video Langsung",
+              subtitle: "Rekam kejadian secara real-time",
+              color: Colors.red.shade50,
+              iconColor: Colors.red,
+              onTap: () {
+                Navigator.pop(context);
+                _handleFileSelection(ImageSource.camera);
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildSourceOption(
+              icon: Icons.image,
+              title: "Pilih dari Galeri",
+              subtitle: "Upload video yang tersimpan",
+              color: Colors.blue.shade50,
+              iconColor: Colors.blue,
+              onTap: () {
+                Navigator.pop(context);
+                _handleFileSelection(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSourceOption({required IconData icon, required String title, required String subtitle, required Color color, required Color iconColor, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, color: iconColor),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showManualFormDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder( // Agar state form bisa update di dalam dialog
+          builder: (context, setStateDialog) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                        border: Border(bottom: BorderSide(color: Colors.amber.shade200)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 28),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Data Belum Lengkap", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF78350F))),
+                                Text("AI membutuhkan bantuan Anda.", style: TextStyle(fontSize: 12, color: Color(0xFF92400E))),
+                              ],
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                    // Form Body
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel("Nama Pelapor *"),
+                          TextField(controller: _namaController, decoration: _inputDeco("Nama Anda")),
+                          const SizedBox(height: 16),
+                          
+                          _buildLabel("Jenis Kejadian *"),
+                          DropdownButtonFormField<String>(
+                            value: _selectedJenisKejadian,
+                            decoration: _inputDeco("Pilih Jenis"),
+                            items: ['Kebakaran', 'Non Kebakaran'].map((String val) {
+                              return DropdownMenuItem(value: val, child: Text(val));
+                            }).toList(),
+                            onChanged: (val) => setStateDialog(() => _selectedJenisKejadian = val),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          _buildLabel("Alamat Kejadian *"),
+                          TextField(controller: _alamatController, maxLines: 2, decoration: _inputDeco("Lokasi lengkap...")),
+                          const SizedBox(height: 16),
+
+                          _buildLabel("Detail Tambahan"),
+                          TextField(controller: _detailController, maxLines: 2, decoration: _inputDeco("Keterangan opsional...")),
+                          
+                          const SizedBox(height: 24),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _resetState();
+                                  },
+                                  style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+                                  child: const Text("Batal"),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  icon: const Icon(Icons.send, size: 16, color: Colors.white),
+                                  label: const Text("Kirim", style: TextStyle(color: Colors.white)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    setState(() {
+                                      _isLoading = true;
+                                      _loadingText = "MENGIRIM MANUAL...";
+                                    });
+                                    _executeSubmit(LaporData(
+                                      namaPelapor: _namaController.text,
+                                      jenisKejadian: _selectedJenisKejadian,
+                                      alamatKejadian: _alamatController.text,
+                                      detailKejadian: _detailController.text,
+                                      latitude: _tempLocation?.latitude,
+                                      longitude: _tempLocation?.longitude,
+                                      dokumen: _tempFile,
+                                    ));
+                                  },
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  InputDecoration _inputDeco(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.grey)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+      filled: true,
+      fillColor: Colors.grey.shade50,
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+    );
+  }
+
+  // ==========================================
+  // 3. RENDER (BUILD)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
-    Widget innerContent;
-    
-    if (_isLoading) {
-      innerContent = const CircularProgressIndicator(color: Colors.white);
-    } else {
-      innerContent = Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            _isRecording ? Icons.stop : Icons.mic,
-            color: _isRecording ? Colors.redAccent : Colors.white,
-            size: 40
-          ),
-          const SizedBox(height: 5),
-          Text(
-            _isRecording ? 'STOP' : 'LAPOR',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
-        ],
-      );
-    }
+    // Definisi warna agar sesuai dengan snippet desain
+    // Anda bisa memindahkannya ke global theme jika perlu
+    const Color primaryColor = Colors.red; 
+    final Color secondaryColor = Colors.red.shade100;
 
-    return GestureDetector(
-      onTap: handleButtonClick,
-      child: AnimatedBuilder(
-        animation: _pulseAnimation,
-        builder: (context, child) {
-          return Container(
-            width: 150,
-            height: 150,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: widget.secondaryColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  spreadRadius: 2,
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-                if (_isRecording)
-                  BoxShadow(
-                    color: Colors.red.withOpacity(0.4),
-                    spreadRadius: _pulseAnimation.value,
-                    blurRadius: _pulseAnimation.value + 5,
-                  ),
-              ],
+    return Center(
+      child: GestureDetector(
+        // LOGIC: Jika loading, tombol tidak bisa ditekan
+        onTap: _isLoading ? null : _showSourceMenu,
+        child: Container(
+          width: 150,
+          height: 150,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: secondaryColor, // Warna lingkaran luar
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                spreadRadius: 2,
+                blurRadius: 5,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor, // Warna lingkaran dalam
+              ),
+              child: Center(
+                // LOGIC: Mengatur tampilan saat Loading vs Standby
+                child: _isLoading
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                            child: Text(
+                              _loadingText, // Text dinamis (Mencari lokasi/Analisa AI)
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10, // Font diperkecil agar muat di lingkaran
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // PERUBAHAN: Icon mic diganti menjadi videocam
+                          Icon(Icons.videocam, color: Colors.white, size: 40),
+                          SizedBox(height: 5),
+                          Text(
+                            'LAPOR',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
             ),
-            child: child,
-          );
-        },
-        child: Center(
-          child: Container(
-            width: 130,
-            height: 130,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: widget.primaryColor,
-            ),
-            child: Center(child: innerContent),
           ),
         ),
       ),

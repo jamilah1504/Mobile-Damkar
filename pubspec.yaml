@@ -36,6 +36,7 @@ dependencies:
 
   
   image_picker: ^1.0.4  # Untuk ambil foto/video
+  
   geolocator: ^10.1.0   # Untuk ambil lokasi GPS
   permission_handler: ^11.0.0 # Untuk izin akses
   path: ^1.8.3          # Utilitas path file

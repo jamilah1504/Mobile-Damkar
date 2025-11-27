@@ -4,13 +4,21 @@ import 'package:flutter_application_2/screens/masyarakat/DetailEdukasiScreen.dar
 import 'package:flutter_application_2/screens/masyarakat/GrafikLaporan.dart';
 import 'package:flutter_application_2/screens/masyarakat/LokasiRawan.dart';
 import 'package:flutter_application_2/screens/masyarakat/Notifikasi.dart';
-import 'package:flutter_application_2/screens/masyarakat/laporan/LaporButton.dart';
-import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; 
-import '../../models/edukasi.dart';
-import '../../methods/api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// --- IMPORT BUTTON LAPOR ---
+import 'package:flutter_application_2/screens/masyarakat/laporan/LaporButton.dart';
+
+// --- IMPORT LAYAR LAIN ---
+import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; 
 import './laporan/LaporanDarurat.dart';
 import './DaftarKunjungan.dart';
+
+// --- IMPORT MODEL ---
+import '../../models/edukasi.dart';
+
+// --- PERBAIKAN IMPORT API SERVICE (Menggunakan 'as' untuk hindari konflik) ---
+import '../../methods/api.dart' as method_api; 
 
 class MasyarakatHomeScreen extends StatefulWidget {
   const MasyarakatHomeScreen({super.key});
@@ -23,7 +31,8 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   late Future<List<Edukasi>> futureEdukasi;
 
   String _userName = "Memuat...";
-  int _userId = 0;
+  // Variabel _userId digunakan di logic loadUserData, jadi warning unused field diabaikan dulu
+  int _userId = 0; 
 
   final Color primaryColor = Colors.red.shade800;
   final Color secondaryColor = Colors.red.shade600;
@@ -41,7 +50,8 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
 
   void _loadEdukasi() {
     setState(() {
-      futureEdukasi = ApiService().getEdukasi(); 
+      // PERBAIKAN: Menggunakan prefix 'method_api'
+      futureEdukasi = method_api.ApiService().getEdukasi(); 
     });
     debugPrint("CATATAN: Memanggil method 'getEdukasi' dari ApiService.");
   }
@@ -97,11 +107,10 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0), // Padding diubah agar slider bisa full width visualnya
+          padding: const EdgeInsets.symmetric(vertical: 16.0), 
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Padding horizontal manual untuk widget yang bukan slider
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Column(
@@ -140,7 +149,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                       ),
                     ),
                     Text(
-                      "Halo, $_userName ",
+                      "Halo, $_userName",
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -160,8 +169,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                 ),
               ),
 
-              // 5. Section Materi Edukasi (MODIFIKASI DISINI: SLIDER)
-              // Tidak dibungkus padding horizontal parent agar scroll mentok ke layar
+              // 5. Section Materi Edukasi (Slider)
               _buildEdukasiSliderSection(
                   context,
                   cardColor,
@@ -218,9 +226,9 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   ) {
     return Column(
       children: [
+        // Pastikan widget LaporButton Anda memang menerima parameter ini
         LaporButton(
-          primaryColor: primaryColor, 
-          secondaryColor: secondaryColor
+          
         ),
         const SizedBox(height: 16),
         Row(
