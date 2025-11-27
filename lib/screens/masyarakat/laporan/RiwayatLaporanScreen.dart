@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
-// import 'package:shared_preferences/shared_preferences.dart'; // HAPUS: Tidak dipakai saat ini
 import 'package:url_launcher/url_launcher.dart'; 
-import '../../../models/laporan.dart'; // Pastikan path ini benar sesuai struktur folder Anda
+import '../../../models/laporan.dart'; // Pastikan path ini benar
 import 'DetailLaporanScreen.dart'; 
 import 'package:flutter/foundation.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
-  // --- WIDGET PEMUTAR VIDEO TERPISAH ---
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'dart:convert';
 
-
+// --- WIDGET VIDEO PLAYER ---
 class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
-
   const VideoPlayerScreen({super.key, required this.videoUrl});
 
   @override
@@ -32,20 +30,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> initializePlayer() async {
-    _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
-    await _videoPlayerController.initialize();
-    
-    setState(() {
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController,
-        autoPlay: true,
-        looping: false,
-        aspectRatio: _videoPlayerController.value.aspectRatio,
-        errorBuilder: (context, errorMessage) {
-          return Center(child: Text(errorMessage, style: const TextStyle(color: Colors.white)));
-        },
-      );
-    });
+    try {
+      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
+      await _videoPlayerController.initialize();
+      setState(() {
+        _chewieController = ChewieController(
+          videoPlayerController: _videoPlayerController,
+          autoPlay: true,
+          looping: false,
+          aspectRatio: _videoPlayerController.value.aspectRatio,
+          errorBuilder: (context, errorMessage) {
+            return Center(child: Text(errorMessage, style: const TextStyle(color: Colors.white)));
+          },
+        );
+      });
+    } catch (e) {
+      debugPrint("Error Video: $e");
+    }
   }
 
   @override
@@ -59,10 +60,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(backgroundColor: Colors.transparent, foregroundColor: Colors.white),
       body: Center(
         child: _chewieController != null && _videoPlayerController.value.isInitialized
             ? Chewie(controller: _chewieController!)
@@ -72,19 +70,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 }
 
+// --- SCREEN UTAMA ---
 class RiwayatLaporan extends StatefulWidget {
-  const RiwayatLaporan({super.key}); // Perbaikan: Gunakan super.key
+  const RiwayatLaporan({super.key});
 
   @override
   State<RiwayatLaporan> createState() => _RiwayatLaporanState();
 }
 
 class _RiwayatLaporanState extends State<RiwayatLaporan> {
-  // PERBAIKAN 1: Ganti localhost menjadi 10.0.2.2 untuk Emulator Android
+  // CONFIG BASE URL
   final String _baseUrl = kIsWeb
       ? 'http://localhost:5000' 
-      : 'http://10.0.2.2:5000';
-  // Jika pakai HP Asli (USB Debugging), ganti dengan IP Laptop (misal: 192.168.1.10)
+      : 'http://10.0.2.2:5000'; // IP Emulator Android Studio
 
   final Dio _dio = Dio();
 
@@ -92,9 +90,8 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
   List<Laporan> _filteredReports = [];
   bool _isLoading = true;
   String? _errorMessage;
-  int _userId = 0; // Simpan userId jika diperlukan
+  int _userId = 0; 
   
-
   final TextEditingController _filterJenisController = TextEditingController();
   final TextEditingController _filterTanggalController = TextEditingController();
   String _filterStatus = '';
@@ -105,15 +102,24 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
     _loadUserData();
   }
 
+  // --- FUNGSI PENTING: MEMBERSIHKAN URL GAMBAR ---
+  String _getCleanImageUrl(String path) {
+    if (path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    // Hapus 'uploads/' di depan jika ada, biar gak double saat digabung _baseUrl
+    String cleanPath = path.replaceAll(RegExp(r'^/?uploads/'), '');
+    return '$_baseUrl/uploads/$cleanPath';
+  }
+
   Future<void> _loadUserData() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      
-      final String? userName = prefs.getString('userName'); 
       final int? userId = prefs.getInt('userId'); 
 
-      if (userName == null || userName.isEmpty || userId == null) {
-        throw Exception("Data pengguna (nama atau ID) tidak lengkap di SharedPreferences");
+      debugPrint("USER ID DARI SHARED PREF: $userId"); // Cek Log ini di Terminal
+
+      if (userId == null) {
+        throw Exception("User ID belum tersimpan (Mungkin belum login?)");
       }
 
       if (mounted) {
@@ -124,11 +130,11 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
       await _fetchReports();
 
     } catch (e) {
-      // Ganti 'print' dengan 'debugPrint' untuk praktik yang lebih baik
       debugPrint("Gagal memuat data pengguna: $e"); 
       if (mounted) {
         setState(() {
-          _userId = 0 ; // Fallback
+          _isLoading = false;
+          _errorMessage = "Gagal memuat profil user. Silakan Login ulang.";
         });
       }
     }
@@ -139,24 +145,35 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
       _isLoading = true;
       _errorMessage = null;
     });
-
+  
     try {
-      // Debugging: Print URL yang dipanggil agar terlihat di Console
-      print('Fetching data from: $_baseUrl/api/reports');
+      debugPrint('Fetching data from: $_baseUrl/api/reports');
 
       final response = await _dio.get('$_baseUrl/api/reports');
       
       if (response.statusCode == 200) {
         List<dynamic> data = response.data;
         
+        // --- BAGIAN DEBUGGING (SUDAH BENAR POSISINYA) ---
+        if (data.isNotEmpty) {
+           debugPrint("🔥 DATA JSON DARI SERVER (ITEM PERTAMA): 🔥");
+           
+           // REVISI DIKIT: Pakai 'jsonEncode' biar formatnya jadi JSON string asli
+           // Jadi kamu bisa lihat jelas ada key "insiden" atau tidak
+           debugPrint(jsonEncode(data[0])); 
+        }
+        // ------------------------------------------------
+
+        // Filter laporan milik user ini saja
         List<Laporan> userReports = data
             .map((json) => Laporan.fromJson(json))
             .where((l) => l.pelaporId == _userId)
             .toList();
 
+        // Urutkan terbaru
         userReports.sort((a, b) => b.timestampDibuat.compareTo(a.timestampDibuat));
-        print(response);
-        print(_userId);
+        
+        debugPrint("Jumlah Laporan Ditemukan: ${userReports.length}");
 
         setState(() {
           _allReports = userReports;
@@ -165,14 +182,13 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
         });
       }
     } catch (e) {
-      // Debugging: Print error lengkap
-      print('Error Fetching: $e');
+      debugPrint('Error Fetching: $e');
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Gagal koneksi: Pastikan backend jalan & URL benar (10.0.2.2).';
+        _errorMessage = 'Gagal koneksi ke server.\nCek apakah backend nyala & URL benar.';
       });
     }
-  }
+}
 
   void _applyFilter() {
     List<Laporan> temp = _allReports;
@@ -213,7 +229,8 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
       case 'Selesai': return Colors.green;
       case 'Ditolak': return Colors.red;
       case 'Diproses': return Colors.orange;
-      default: return Colors.blue;
+      case 'Menunggu Verifikasi': return Colors.blue;
+      default: return Colors.grey;
     }
   }
 
@@ -249,20 +266,32 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _fetchReports,
+              onRefresh: _loadUserData, // Refresh memuat ulang user & data
               child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (_errorMessage != null)
                       Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         margin: const EdgeInsets.only(bottom: 16),
-                        color: Colors.red.shade100,
-                        child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error, color: Colors.red),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red))),
+                          ],
+                        ),
                       ),
 
+                    // --- FILTER SECTION ---
                     Card(
                       elevation: 2,
                       color: Colors.white,
@@ -349,6 +378,7 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
                     ),
                     const SizedBox(height: 24),
 
+                    // --- LIST DATA ---
                     _filteredReports.isEmpty
                         ? _buildEmptyState()
                         : ListView.builder(
@@ -397,18 +427,20 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
             ),
             const SizedBox(height: 12),
 
+            // --- BAGIAN GAMBAR/VIDEO DIPERBAIKI ---
             if (laporan.dokumentasi.isNotEmpty)
               SizedBox(
                 height: 140,
                 child: Row(
                   children: laporan.dokumentasi.take(2).map((doc) {
-                    String fullUrl = '$_baseUrl/uploads/${doc.fileUrl}';
-                    bool isVideo = doc.tipeFile.toLowerCase() == 'video'; // Cek tipe file
+                    
+                    // PAKAI FUNGSI CLEANER DI SINI
+                    String fullUrl = _getCleanImageUrl(doc.fileUrl);
+                    bool isVideo = doc.tipeFile.toLowerCase() == 'video';
 
                     return Expanded(
                       child: GestureDetector(
                         onTap: () {
-                          // Jika Video, Buka Player
                           if (isVideo) {
                             Navigator.push(
                               context,
@@ -416,58 +448,45 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
                                 builder: (context) => VideoPlayerScreen(videoUrl: fullUrl),
                               ),
                             );
-                          } 
-                          // Jika Gambar, bisa tambahkan fitur zoom gambar (opsional)
+                          }
+                          // Print URL untuk debug
+                          debugPrint("Mencoba buka media: $fullUrl");
                         },
                         child: Container(
                           margin: const EdgeInsets.only(right: 8),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            color: Colors.black12, // Placeholder color
-                            image: isVideo 
-                                ? null // Video tidak pakai NetworkImage langsung di background
-                                : DecorationImage(
-                                    image: NetworkImage(fullUrl),
+                            color: Colors.black12,
+                          ),
+                          child: ClipRRect( // Agar gambar tidak keluar border
+                            borderRadius: BorderRadius.circular(8),
+                            child: isVideo
+                                ? Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Container(color: Colors.black54),
+                                      const Icon(Icons.play_circle_fill, color: Colors.white, size: 48),
+                                      const Positioned(
+                                        bottom: 8, right: 8,
+                                        child: Text("VIDEO", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      )
+                                    ],
+                                  )
+                                : Image.network(
+                                    fullUrl,
                                     fit: BoxFit.cover,
-                                    onError: (e, s) => const AssetImage('assets/placeholder.png'),
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    // Handle Error Gambar
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
+                                    },
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(child: CircularProgressIndicator(strokeWidth: 2));
+                                    },
                                   ),
                           ),
-                          child: isVideo
-                              ? Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    // Background hitam transparan agar ikon terlihat
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.3), 
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    // Ikon Play
-                                    const Icon(
-                                      Icons.play_circle_fill,
-                                      color: Colors.white,
-                                      size: 48,
-                                    ),
-                                    // Label kecil "Video"
-                                    Positioned(
-                                      bottom: 8,
-                                      right: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black54,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Text(
-                                          "VIDEO",
-                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                    )
-                                  ],
-                                )
-                              : null, // Jika gambar, child-nya null (karena sudah di DecorationImage)
                         ),
                       ),
                     );
@@ -502,7 +521,6 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        // PERBAIKAN 3: Menangani deprecated withOpacity (Jika error, ganti .withValues(alpha: 0.1))
                         color: statusColor.withOpacity(0.1), 
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: statusColor),
@@ -579,10 +597,14 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey),
           ),
+          const SizedBox(height: 20),
+          // Tambahan: Tombol Refresh manual
+          ElevatedButton(
+             onPressed: _loadUserData,
+             child: const Text("Coba Refresh"),
+          )
         ],
       ),
     );
   }
-
-
 }
