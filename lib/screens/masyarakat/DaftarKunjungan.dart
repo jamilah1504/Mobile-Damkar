@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; 
-import 'dart:io' show Platform; 
-import 'package:flutter/services.dart'; // <-- BARU: Untuk FilteringTextInputFormatter
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+import 'package:flutter/services.dart'; // [PENTING] Untuk validasi angka
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart'; // Pastikan package ini terinstall
+
+// Model Data Jadwal
+class JadwalBooked {
+  final DateTime date;
+  final String namaSekolah;
+
+  JadwalBooked({required this.date, required this.namaSekolah});
+}
 
 class DaftarKunjunganScreen extends StatefulWidget {
   const DaftarKunjunganScreen({Key? key}) : super(key: key);
@@ -15,22 +24,27 @@ class DaftarKunjunganScreen extends StatefulWidget {
 }
 
 class _DaftarKunjunganScreenState extends State<DaftarKunjunganScreen> {
-  // Controllers
+  // --- CONTROLLERS ---
   final TextEditingController _namaSekolahController = TextEditingController();
   final TextEditingController _jumlahSiswaController = TextEditingController();
   final TextEditingController _pjSekolahController = TextEditingController();
   final TextEditingController _kontakPjController = TextEditingController();
-  final TextEditingController _tanggalController = TextEditingController();
+  
+  // Controller untuk Form Tanggal (Read Only, terisi otomatis dari Kalender)
+  final TextEditingController _tanggalDisplayController = TextEditingController();
 
-  // State
+  // --- STATE ---
+  DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDate;
   List<PlatformFile> _selectedFiles = [];
   bool _isSubmitting = false;
+  bool _isLoadingJadwal = true;
   
+  // Data Jadwal dari Database
+  List<JadwalBooked> _bookedDates = [];
   final Dio _dio = Dio();
 
-  // [LOGIKA URL DINAMIS]
-  // Menyesuaikan URL backend berdasarkan platform (Web vs Android Emulator)
+  // URL Setup (Menyesuaikan Emulator/Web)
   String get _baseUrl {
     if (kIsWeb) return 'http://localhost:5000/api';
     try {
@@ -42,344 +56,406 @@ class _DaftarKunjunganScreenState extends State<DaftarKunjunganScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _fetchExistingJadwal();
+  }
+
+  @override
   void dispose() {
     _namaSekolahController.dispose();
     _jumlahSiswaController.dispose();
     _pjSekolahController.dispose();
     _kontakPjController.dispose();
-    _tanggalController.dispose();
+    _tanggalDisplayController.dispose();
     super.dispose();
   }
 
-  // Format tanggal ke bahasa Indonesia
+  // --- FETCH DATA JADWAL DARI API ---
+  Future<void> _fetchExistingJadwal() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? token = prefs.getString('token') ?? prefs.getString('authToken');
+      if (token == null) return;
+
+      final response = await _dio.get(
+        '$_baseUrl/kunjungan',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = (response.data['data'] is List) 
+            ? response.data['data'] 
+            : response.data;
+
+        final List<JadwalBooked> loadedJadwal = [];
+        
+        // Filter hanya yang statusnya 'approved'
+        for (var item in data) {
+          if (item['status'] == 'approved' && item['tanggal_kunjungan'] != null) {
+            try {
+              DateTime parsedDate = DateTime.parse(item['tanggal_kunjungan'].toString());
+              loadedJadwal.add(JadwalBooked(
+                date: parsedDate,
+                namaSekolah: item['nama_sekolah'] ?? 'Terisi',
+              ));
+            } catch (e) {
+              debugPrint("Error parse date: $e");
+            }
+          }
+        }
+        if (mounted) setState(() { _bookedDates = loadedJadwal; _isLoadingJadwal = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingJadwal = false);
+    }
+  }
+
+  // Helper: Cek apakah tanggal tertentu sudah dibooking
+  List<JadwalBooked> _getBookedInfoForDay(DateTime day) {
+    return _bookedDates.where((jadwal) => isSameDay(jadwal.date, day)).toList();
+  }
+
+  // Helper: Format Tanggal Indonesia
   String _formatDateToIndonesian(DateTime date) {
     try {
-      final DateFormat formatter = DateFormat('EEEE, d MMMM yyyy', 'id_ID');
-      return formatter.format(date);
+      // Menggunakan locale 'id_ID' (Pastikan initializeDateFormatting sudah dipanggil di main.dart jika perlu)
+      // Jika error locale, fallback ke format sederhana
+      return DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(date);
     } catch (e) {
       return DateFormat('yyyy-MM-dd').format(date);
     }
   }
 
-  // Pilih tanggal
-  Future<void> _selectDate() async {
-    if (!mounted) return;
-    
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFFD32F2F),
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black87,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    
-    if (picked != null && picked != _selectedDate && mounted) {
-      setState(() {
-        _selectedDate = picked;
-        // Format YYYY-MM-DD sesuai database SQL
-        _tanggalController.text = DateFormat('yyyy-MM-dd').format(picked);
-      });
-    }
-  }
-
-  // Pilih file dokumen
+  // --- LOGIKA UPLOAD FILE ---
   Future<void> _pickFiles() async {
     try {
-      // withData: true SANGAT PENTING untuk Web agar bytes terbaca
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx'],
         allowMultiple: true,
-        withData: true, 
+        withData: true, // Penting untuk Web
       );
 
       if (result != null) {
-        // Filter ekstensi valid
-        final validFiles = result.files.where((file) {
-          final ext = file.extension?.toLowerCase() ?? '';
-          return ['pdf', 'doc', 'docx'].contains(ext);
-        }).toList();
-
-        if (validFiles.isEmpty) {
-          _showSnackBar('Format file tidak didukung. Gunakan PDF/Word.', isError: true);
-          return;
-        }
-
         setState(() {
-          _selectedFiles.addAll(validFiles);
+          _selectedFiles.addAll(result.files.where((file) => 
+            ['pdf', 'doc', 'docx'].contains(file.extension?.toLowerCase() ?? '')).toList());
         });
       }
     } catch (e) {
-      debugPrint('Error pick files: $e');
-      _showSnackBar('Gagal memilih file. Izin akses mungkin ditolak.', isError: true);
+      _showSnackBar('Gagal memilih file.', isError: true);
     }
   }
 
   void _removeFile(int index) {
-    setState(() {
-      _selectedFiles.removeAt(index);
-    });
+    setState(() => _selectedFiles.removeAt(index));
   }
 
-  // Validasi format angka 10-15 digit
-  bool _isValidPhone(String phone) {
-    final phoneRegex = RegExp(r'^[0-9]{10,15}$');
-    return phoneRegex.hasMatch(phone);
-  }
-
-  // --- FUNGSI SUBMIT DENGAN PERBAIKAN FILE UPLOAD ---
+  // --- SUBMIT FORM ---
   Future<void> _submitForm() async {
-    // 1. Validasi Input
+    // 1. Validasi Input Kosong
     if (_namaSekolahController.text.isEmpty ||
         _jumlahSiswaController.text.isEmpty ||
         _pjSekolahController.text.isEmpty ||
         _kontakPjController.text.isEmpty ||
         _selectedDate == null) {
-      _showSnackBar('Harap lengkapi semua data yang diperlukan', isError: true);
+      _showSnackBar('Harap lengkapi semua data dan pilih tanggal!', isError: true);
       return;
     }
 
+    // 2. Validasi Tanggal Penuh (Double Check)
+    if (_getBookedInfoForDay(_selectedDate!).isNotEmpty) {
+      _showSnackBar('Maaf, tanggal tersebut sudah penuh.', isError: true);
+      return;
+    }
+
+    // 3. Validasi File
     if (_selectedFiles.isEmpty) {
-      _showSnackBar('Wajib mengupload Surat Permohonan (PDF/Word)!', isError: true);
-      return;
-    }
-
-    if (!_isValidPhone(_kontakPjController.text)) {
-      _showSnackBar('Format nomor telepon tidak valid (10-15 angka).', isError: true);
+      _showSnackBar('Wajib upload surat permohonan.', isError: true);
       return;
     }
 
     setState(() => _isSubmitting = true);
 
     try {
-      // 2. Ambil Token
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? token = prefs.getString('token') ?? prefs.getString('authToken');
+      if (token == null) throw Exception('AUTH_ERROR');
 
-      if (token == null || token.isEmpty) {
-        throw Exception('AUTH_ERROR');
-      }
-
-      // 3. Siapkan FormData
+      // 4. Siapkan Data
       FormData formData = FormData.fromMap({
         'namaSekolah': _namaSekolahController.text,
         'jumlahSiswa': _jumlahSiswaController.text,
-        'tanggal': _tanggalController.text,
+        'tanggal': DateFormat('yyyy-MM-dd').format(_selectedDate!), // Format API YYYY-MM-DD
         'pjSekolah': _pjSekolahController.text,
         'kontakPj': _kontakPjController.text,
       });
 
-      // 4. Attach Files (FIXED LOGIC)
+      // 5. Attach Files
       for (var file in _selectedFiles) {
         MultipartFile multipartFile;
-
-        if (kIsWeb) {
-          // [WEB] Gunakan BYTES. Jangan akses .path!
-          if (file.bytes != null) {
-            multipartFile = MultipartFile.fromBytes(
-              file.bytes!,
-              filename: file.name,
-            );
-          } else {
-             continue; 
-          }
+        if (kIsWeb && file.bytes != null) {
+            multipartFile = MultipartFile.fromBytes(file.bytes!, filename: file.name);
+        } else if (file.path != null) {
+            multipartFile = await MultipartFile.fromFile(file.path!, filename: file.name);
         } else {
-          // [MOBILE] Gunakan PATH agar hemat memori
-          if (file.path != null) {
-            multipartFile = await MultipartFile.fromFile(
-              file.path!,
-              filename: file.name,
-            );
-          } else {
-             // Fallback
-             multipartFile = MultipartFile.fromBytes(
-                file.bytes ?? [],
-                filename: file.name,
-             );
-          }
+             continue;
         }
-
         formData.files.add(MapEntry('suratFiles', multipartFile));
       }
 
-      // 5. Kirim Request
+      // 6. Kirim Request
       final response = await _dio.post(
         '$_baseUrl/kunjungan',
         data: formData,
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-          sendTimeout: const Duration(seconds: 30), 
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _showSnackBar('Pendaftaran berhasil diajukan!', isError: false);
-        
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) Navigator.pop(context);
       }
-
-    } on DioException catch (e) {
-      String msg = 'Gagal terhubung ke server.';
-      
-      if (e.response != null) {
-        if (e.response?.statusCode == 401) {
-          msg = 'Sesi berakhir. Silakan login kembali.';
-           if (mounted) Navigator.pushReplacementNamed(context, '/login');
-        } else if (e.response?.data != null && e.response?.data['msg'] != null) {
-          msg = e.response?.data['msg'];
-        }
-      } 
-      _showSnackBar(msg, isError: true);
-
     } catch (e) {
-      if (e.toString().contains('AUTH_ERROR')) {
-         _showSnackBar('Anda belum login.', isError: true);
-         if(mounted) Navigator.pushReplacementNamed(context, '/login');
-      } else {
-         _showSnackBar('Gagal mengirim data. Periksa koneksi.', isError: true);
-         debugPrint('Error: $e');
-      }
+      _showSnackBar('Gagal mengirim data. Periksa koneksi.', isError: true);
     } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-        behavior: SnackBarBehavior.floating,
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: isError ? Colors.red : Colors.green,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  // --- UI UTAMA ---
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFD32F2F),
+        title: const Text('Daftar Kunjungan', style: TextStyle(color: Colors.white)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              
+              // [BAGIAN 1] WIDGET KALENDER
+              _buildCalendarSection(),
+              
+              const SizedBox(height: 24),
+              const Text("Data Kunjungan", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              
+              // [BAGIAN 2] FORM INPUT
+              _buildInputContainer(
+                child: TextField(
+                  controller: _namaSekolahController,
+                  decoration: _inputDecoration('Nama Sekolah'),
+                  enabled: !_isSubmitting,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Form Jumlah Siswa (Hanya Angka)
+              _buildInputContainer(
+                child: TextField(
+                  controller: _jumlahSiswaController,
+                  decoration: _inputDecoration('Jumlah Siswa'),
+                  keyboardType: TextInputType.number, 
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly], // [FIX] Hanya Angka
+                  enabled: !_isSubmitting,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Form Tanggal (Read Only - Terhubung ke Kalender)
+              _buildInputContainer(
+                child: TextField(
+                  controller: _tanggalDisplayController,
+                  readOnly: true, // User tidak bisa mengetik manual
+                  enabled: !_isSubmitting,
+                  decoration: InputDecoration(
+                    hintText: 'Pilih Tanggal pada Kalender di atas',
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    suffixIcon: const Icon(Icons.calendar_today, color: Colors.grey),
+                  ),
+                  onTap: () {
+                     // Scroll ke atas saat diklik agar user lihat kalender
+                     Scrollable.ensureVisible(context, alignment: 0.0);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              _buildInputContainer(
+                child: TextField(
+                  controller: _pjSekolahController,
+                  decoration: _inputDecoration('Nama PJ Sekolah'),
+                  enabled: !_isSubmitting,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Form Kontak PJ (Hanya Angka)
+              _buildInputContainer(
+                child: TextField(
+                  controller: _kontakPjController,
+                  decoration: _inputDecoration('Kontak PJ (HP)'),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly], // [FIX] Hanya Angka
+                  enabled: !_isSubmitting,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // [BAGIAN 3] UPLOAD & SUBMIT
+              _buildUploadSection(),
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submitForm,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD32F2F),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Ajukan Pendaftaran', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-        backgroundColor: const Color(0xFFF5F5F5),
-        appBar: AppBar(
-            backgroundColor: const Color(0xFFD32F2F),
-            title: const Text('Daftar Kunjungan', style: TextStyle(color: Colors.white)),
-            leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: _isSubmitting ? null : () => Navigator.pop(context),
-            ),
-            centerTitle: true,
-        ),
-        body: SingleChildScrollView(
-            child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                        _buildInputContainer(
-                            child: TextField(
-                                controller: _namaSekolahController,
-                                decoration: _inputDecoration('Nama Sekolah'),
-                                enabled: !_isSubmitting,
-                            ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildInputContainer(
-                            child: TextField(
-                                controller: _jumlahSiswaController,
-                                decoration: _inputDecoration('Jumlah Siswa'),
-                                keyboardType: TextInputType.number,
-                                enabled: !_isSubmitting,
-                            ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildInputContainer(
-                            child: TextField(
-                                controller: _pjSekolahController,
-                                decoration: _inputDecoration('Nama PJ Sekolah'),
-                                enabled: !_isSubmitting,
-                            ),
-                        ),
-                        const SizedBox(height: 12),
-                        // Kontak PJ DENGAN PEMBATASAN ANGKA
-                        _buildInputContainer(
-                            child: TextField(
-                                controller: _kontakPjController,
-                                decoration: _inputDecoration('Kontak PJ'),
-                                // UBAH keyboardType menjadi number
-                                keyboardType: TextInputType.number, 
-                                // TAMBAHKAN inputFormatters ini
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                ],
-                                enabled: !_isSubmitting,
-                            ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildInputContainer(
-                            child: InkWell(
-                                onTap: _isSubmitting ? null : _selectDate,
-                                child: InputDecorator(
-                                    decoration: _inputDecoration(
-                                        _selectedDate != null ? _formatDateToIndonesian(_selectedDate!) : 'Pilih Tanggal Kunjungan',
-                                    ),
-                                    child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                            Text(
-                                                _selectedDate != null ? _formatDateToIndonesian(_selectedDate!) : 'Pilih Tanggal Kunjungan',
-                                                style: TextStyle(
-                                                    color: _selectedDate != null ? Colors.black87 : Colors.grey,
-                                                ),
-                                            ),
-                                            const Icon(Icons.calendar_today, color: Colors.grey),
-                                        ],
-                                    ),
-                                ),
-                            ),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildUploadSection(),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                                onPressed: _isSubmitting ? null : _submitForm,
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFD32F2F),
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                child: _isSubmitting
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                    )
-                                    : const Text(
-                                        'Ajukan Pendaftaran',
-                                        style: TextStyle(color: Colors.white, fontSize: 16),
-                                    ),
-                            ),
-                        ),
-                    ],
+  // --- WIDGET KALENDER YANG SUDAH DIPERBAIKI ---
+  Widget _buildCalendarSection() {
+    // [FIX UTAMA] Normalisasi Waktu agar Hari Ini bisa diklik
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day); // Jam di-set ke 00:00:00
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        children: [
+          _isLoadingJadwal 
+            ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())
+            : TableCalendar(
+                locale: 'id_ID',
+                // [FIX] Gunakan 'today' yang bersih dari jam/menit
+                firstDay: today, 
+                lastDay: DateTime(today.year + 1, today.month, today.day),
+                focusedDay: _focusedDay,
+                currentDay: today,
+                
+                headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
+                
+                // Menentukan Hari yang Terpilih
+                selectedDayPredicate: (day) {
+                  return isSameDay(_selectedDate, day);
+                },
+
+                // LOGIKA SAAT TANGGAL DIKLIK
+                onDaySelected: (selectedDay, focusedDay) {
+                  // Cek apakah hari tersebut penuh (merah)
+                  final booked = _getBookedInfoForDay(selectedDay);
+                  if (booked.isNotEmpty) {
+                    _showSnackBar("Tanggal ini penuh oleh ${booked.first.namaSekolah}", isError: true);
+                    return; 
+                  }
+
+                  setState(() {
+                    _selectedDate = selectedDay;
+                    _focusedDay = focusedDay; 
+                    
+                    // [FIX] Update Form Tanggal di bawah secara otomatis
+                    _tanggalDisplayController.text = _formatDateToIndonesian(selectedDay);
+                  });
+                },
+
+                // Custom Tampilan Hari
+                calendarBuilders: CalendarBuilders(
+                  // 1. Hari Booked (Merah)
+                  defaultBuilder: (context, day, focusedDay) {
+                     final booked = _getBookedInfoForDay(day);
+                     if (booked.isNotEmpty) return _buildBookedDay(day, booked.first.namaSekolah);
+                     return null;
+                  },
+                  // 2. Hari Ini (Biru atau Merah jika booked)
+                  todayBuilder: (context, day, focusedDay) {
+                     final booked = _getBookedInfoForDay(day);
+                     if (booked.isNotEmpty) return _buildBookedDay(day, booked.first.namaSekolah);
+                     return Container(
+                       margin: const EdgeInsets.all(4), alignment: Alignment.center,
+                       decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                       child: Text('${day.day}', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                     );
+                  },
+                  // 3. Hari Terpilih (Orange)
+                  selectedBuilder: (context, day, focusedDay) {
+                    return Container(
+                      margin: const EdgeInsets.all(4), alignment: Alignment.center,
+                      decoration: BoxDecoration(color: const Color(0xFFFCD3B2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange)),
+                      child: Text('${day.day}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                    );
+                  },
                 ),
-            ),
-        ),
+              ),
+            // Legend
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(width: 12, height: 12, color: const Color(0xFFFFEDED)),
+                  const SizedBox(width: 4), const Text("Penuh", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  const SizedBox(width: 16),
+                  Container(width: 12, height: 12, color: const Color(0xFFFCD3B2)),
+                  const SizedBox(width: 4), const Text("Pilihan Anda", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBookedDay(DateTime day, String label) {
+    return Container(
+      margin: const EdgeInsets.all(2),
+      decoration: BoxDecoration(color: const Color(0xFFFFEDED), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFF8C6C6))),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('${day.day}', style: const TextStyle(color: Colors.red, fontSize: 12)),
+          // Chip kecil nama sekolah
+          Text(label, style: const TextStyle(fontSize: 7, color: Colors.red), overflow: TextOverflow.ellipsis, maxLines: 1),
+        ],
+      ),
     );
   }
 
@@ -395,73 +471,38 @@ class _DaftarKunjunganScreenState extends State<DaftarKunjunganScreen> {
     return InputDecoration(
       hintText: hint,
       border: InputBorder.none,
-      contentPadding: const EdgeInsets.all(16),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16),
     );
   }
 
   Widget _buildUploadSection() {
-     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('Upload Surat Permohonan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 4),
-              const Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
-            ],
-          ),
-          const SizedBox(height: 12),
+          const Text("Upload Dokumen", style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
           InkWell(
-            onTap: _isSubmitting ? null : _pickFiles,
+            onTap: _pickFiles,
             child: Container(
-              width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 20),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300, width: 2),
-                borderRadius: BorderRadius.circular(8),
-                color: Colors.grey.shade50,
-              ),
-              child: Column(
-                children: [
-                  Icon(Icons.upload_file, size: 32, color: Colors.grey.shade600),
-                  const SizedBox(height: 8),
-                  Text('Pilih File Dokumen (PDF/Word)', style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
-                ],
-              ),
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8), color: Colors.grey.shade50),
+              child: Center(child: Column(children: const [Icon(Icons.upload_file, color: Colors.grey), Text("Pilih PDF/Word", style: TextStyle(color: Colors.grey))])),
             ),
           ),
-          if (_selectedFiles.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            const Text('File Terpilih:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 8),
-            ...List.generate(_selectedFiles.length, (index) => _buildFilePreview(index)),
-          ],
-          const SizedBox(height: 12),
-          Text('* Wajib upload file .pdf, .doc, atau .docx', style: TextStyle(fontSize: 12, color: Colors.grey.shade600), textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilePreview(int index) {
-    final file = _selectedFiles[index];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-      child: Row(
-        children: [
-          Icon(Icons.description, color: Colors.grey.shade700),
-          const SizedBox(width: 12),
-          Expanded(child: Text(file.name, style: TextStyle(fontSize: 14, color: Colors.grey.shade800), overflow: TextOverflow.ellipsis)),
-          if (!_isSubmitting)
-            IconButton(icon: const Icon(Icons.close, size: 20), color: Colors.red, onPressed: () => _removeFile(index)),
+          const SizedBox(height: 8),
+          ..._selectedFiles.asMap().entries.map((e) => Container(
+            margin: const EdgeInsets.only(bottom: 4),
+            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
+            child: ListTile(
+              dense: true,
+              leading: const Icon(Icons.description, size: 20),
+              title: Text(e.value.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: IconButton(icon: const Icon(Icons.close, color: Colors.red, size: 20), onPressed: () => _removeFile(e.key)),
+            ),
+          )),
         ],
       ),
     );
