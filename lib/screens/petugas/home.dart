@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http; // Untuk API
 import 'package:intl/intl.dart'; // Untuk format tanggal
 import 'package:intl/date_symbol_data_local.dart'; // Untuk lokalisasi tanggal
 import 'package:shared_preferences/shared_preferences.dart'; // <--- 1. IMPORT PENTING
-import 'daftarTugas.dart';
+import '../petugas/daftarTugas.dart';
 import 'detailTugas.dart';
 
 // ---------------------------------------------------
@@ -358,7 +358,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const DaftarTugasScreen(),
+                builder: (context) => const DaftarTugas(),
               ),
             );
           }

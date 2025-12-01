@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'; // <-- Tambahan untuk debugPrint
 import '../models/edukasi.dart';
 import '../models/laporan.dart';
 import '../models/laporan_lapangan.dart';
+import '../models/petugas/riwayat_model.dart';
 
 class ApiService {
   late Dio _dio; 
@@ -220,4 +221,37 @@ class ApiService {
       rethrow;
     }
   }
+  // [BARU] Fungsi untuk Mengambil Riwayat Tugas Petugas
+  Future<List<RiwayatTugas>> getRiwayatTugas() async {
+    try {
+      // Panggil endpoint backend (Token otomatis ditambahkan oleh Interceptor di atas)
+      // Pastikan endpoint ini sesuai dengan routes Node.js Anda
+      final response = await _dio.get('/tugas/riwayat');
+
+      debugPrint('Riwayat Response: ${response.data}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = response.data;
+        
+        // Ambil data dari key 'data' (sesuai format JSON backend)
+        final List<dynamic> data = jsonResponse['data'];
+        
+        // Ubah JSON menjadi List Object RiwayatTugas
+        return data.map((item) => RiwayatTugas.fromJson(item)).toList();
+      } else {
+        throw Exception('Gagal memuat riwayat: ${response.statusMessage}');
+      }
+    } on DioException catch (e) {
+      debugPrint('Dio Error Riwayat: ${e.response?.data}');
+      // Ambil pesan error dari backend jika ada
+      String pesan = e.response?.data['message'] ?? 'Gagal mengambil data riwayat';
+      throw Exception(pesan);
+    } catch (e) {
+      throw Exception('Terjadi kesalahan: $e');
+    }
+  }
+
+// Tutup kurung class ApiService ada di bawah sini
 }
+
+
