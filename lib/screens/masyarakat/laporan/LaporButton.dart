@@ -36,7 +36,7 @@ class ApiService {
   // Jika Android Emulator: 10.0.2.2
   static String get baseUrl {
     if (kIsWeb) return 'http://localhost:5000/api'; 
-    return 'http://192.168.1.5:5000/api';
+    return 'http://192.168.217.187:5000/api';
   }
 
   // UBAH PARAMETER: Terima XFile, bukan File

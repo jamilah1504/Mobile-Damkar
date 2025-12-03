@@ -1,8 +1,42 @@
 import 'package:flutter/material.dart';
-import '../screens/auth/login.dart';
+import 'package:flutter/services.dart'; // Untuk fitur copy paste token
+import '../service/notfikasi.dart';
+import '../screens/auth/login.dart'; // UNCOMMENT JIKA FILE LOGIN SUDAH ADA
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  // Variabel untuk menyimpan token (untuk keperluan debug)
+  String? _fcmToken;
+
+  @override
+  void initState() {
+    super.initState();
+    // Panggil logika pengambilan token saat aplikasi dibuka
+    _getAndPrintToken();
+  }
+
+  // Fungsi dari kode sebelumnya untuk mengambil & print token
+  void _getAndPrintToken() async {
+    String? token = await NotificationService().getFcmToken();
+    
+    if (mounted) {
+      setState(() {
+        _fcmToken = token;
+      });
+    }
+
+    // Print ke console agar Anda bisa copy untuk testing di Postman/Backend
+    print("========================================");
+    print("FCM TOKEN DEVICE INI:");
+    print(token);
+    print("========================================");
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,9 +44,9 @@ class HomeScreen extends StatelessWidget {
     final Color primaryColor = Colors.red.shade800;
     final Color secondaryColor = Colors.red.shade600;
     final Color backgroundColor = Colors.grey.shade100;
-    final Color cardColor = Colors.white;
+    // final Color cardColor = Colors.white; // Unused variable removed
     final Color textColor = Colors.black87;
-    final Color subtleTextColor = Colors.black54;
+    // final Color subtleTextColor = Colors.black54; // Unused variable removed
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -20,25 +54,38 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: primaryColor,
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
-          // Ganti dengan logo Anda
+          // Pastikan file gambar ada di assets dan pubspec.yaml
           child: Image.asset(
             'Images/logo2.png',
-            width: 40, // Adjust size as needed
+            width: 40,
             height: 40,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) =>
                 const Icon(Icons.shield, color: Colors.white, size: 24),
           ),
         ),
-        title: const Text(
-          'Pemadam Kebakaran\nKabupaten Subang',
-          style: TextStyle(fontSize: 16, color: Colors.white),
+        // FITUR RAHASIA: GestureDetector untuk copy token tanpa merusak UI
+        title: GestureDetector(
+          onLongPress: () {
+            if (_fcmToken != null) {
+              Clipboard.setData(ClipboardData(text: _fcmToken!));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Token Dev: $_fcmToken Disalin!")),
+              );
+            }
+          },
+          child: const Text(
+            'Pemadam Kebakaran\nKabupaten Subang',
+            style: TextStyle(fontSize: 16, color: Colors.white),
+          ),
         ),
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             child: ElevatedButton(
               onPressed: () {
+                // Navigasi ke Login
+                // Pastikan route atau file LoginScreen sudah ada
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -63,7 +110,7 @@ class HomeScreen extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
                 child: Image.asset(
-                  'Images/image.png', // Ganti URL gambar banner
+                  'Images/image.png', // Pastikan asset ini ada
                   height: 150,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Container(
@@ -83,8 +130,8 @@ class HomeScreen extends StatelessWidget {
               _buildLayananSection(secondaryColor, textColor),
               const SizedBox(height: 24),
 
-              // 4. Section Materi Edukasi
-              const SizedBox(height: 24), // Tambahan space di bawah
+              // 4. Section Materi Edukasi (Placeholder)
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -112,28 +159,38 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
           child: Center(
-            child: Container(
-              width: 130,
-              height: 130,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: primaryColor, // Warna lingkaran dalam
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.mic, color: Colors.white, size: 40),
-                    SizedBox(height: 5),
-                    Text(
-                      'LAPOR',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                   print("Tombol LAPOR ditekan");
+                   // Tambahkan logika navigasi ke halaman lapor darurat disini
+                },
+                customBorder: const CircleBorder(),
+                child: Container(
+                  width: 130,
+                  height: 130,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryColor, // Warna lingkaran dalam
+                  ),
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.mic, color: Colors.white, size: 40),
+                        SizedBox(height: 5),
+                        Text(
+                          'LAPOR',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -189,8 +246,7 @@ class HomeScreen extends StatelessWidget {
         GridView.count(
           crossAxisCount: 3, // 3 kolom
           shrinkWrap: true, // Agar GridView menyesuaikan tingginya
-          physics:
-              const NeverScrollableScrollPhysics(), // Nonaktifkan scroll internal
+          physics: const NeverScrollableScrollPhysics(), // Nonaktifkan scroll internal
           mainAxisSpacing: 10,
           crossAxisSpacing: 10,
           children: [
@@ -218,20 +274,18 @@ class HomeScreen extends StatelessWidget {
               buttonColor,
               textColor,
             ),
-            // --- LAYANAN TAMBAHAN DIMULAI DI SINI ---
             _buildServiceButton(
-              Icons.school, // Anda bisa ganti ikon ini
-              'Edukasi\nPublik', // Anda bisa ganti teks ini
+              Icons.school,
+              'Edukasi\nPublik',
               buttonColor,
               textColor,
             ),
             _buildServiceButton(
-              Icons.contacts, // Anda bisa ganti ikon ini
-              'Kontak\nPetugas', // Anda bisa ganti teks ini
+              Icons.contacts,
+              'Kontak\nPetugas',
               buttonColor,
               textColor,
             ),
-            // --- AKHIR LAYANAN TAMBAHAN ---
           ],
         ),
       ],
@@ -248,10 +302,11 @@ class HomeScreen extends StatelessWidget {
     return ElevatedButton(
       onPressed: () {},
       style: ElevatedButton.styleFrom(
-        backgroundColor: buttonColor,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white, // Ganti background jadi putih agar icon menonjol
+        foregroundColor: buttonColor, // Warna icon mengikuti tema
+        elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        padding: const EdgeInsets.symmetric(vertical: 15),
+        padding: const EdgeInsets.symmetric(vertical: 8), // Padding disesuaikan
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -261,7 +316,7 @@ class HomeScreen extends StatelessWidget {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12),
+            style: TextStyle(fontSize: 12, color: textColor),
           ),
         ],
       ),

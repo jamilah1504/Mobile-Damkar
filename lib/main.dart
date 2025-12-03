@@ -1,22 +1,28 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-// Impor HomeScreen yang umum (pastikan path dan nama file benar)
+
+// Import Service Notifikasi yang baru dibuat
+import 'service/notfikasi.dart';
+
+// Pastikan path ini benar sesuai struktur project Anda
 import 'screens/home.dart';
-import 'firebase_options.dart'; 
+import 'firebase_options.dart';
 
+void main() async {
+  // 1. Pastikan binding widget siap
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() async { // 3. Jadikan 'async'
-  
-  // 4. Pastikan binding widget sudah siap sebelum inisialisasi
-  WidgetsFlutterBinding.ensureInitialized(); 
-  
-  // 5. INI ADALAH PERBAIKANNYA: Inisialisasi Firebase
+  // 2. Inisialisasi Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 6. Jalankan aplikasi Anda
+  // 3. Inisialisasi Notification Service (TAMBAHAN PENTING)
+  // Ini akan meminta izin notifikasi dan setup channel
+  await NotificationService().initialize();
+
+  // 4. Jalankan Aplikasi
   runApp(const MyApp());
 }
 
@@ -31,19 +37,18 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.red.shade800),
         useMaterial3: true,
       ),
-      // --- PERUBAHAN DI SINI ---
-      // Halaman awal sekarang adalah HomeScreen yang umum
+      // Halaman awal
       home: const HomeScreen(),
-      // --- AKHIR PERUBAHAN ---
       debugShowCheckedModeBanner: false,
-      // Tambahkan localizations untuk DatePicker dan widget lainnya
+      
+      // Konfigurasi Bahasa/Lokalisasi
       localizationsDelegates: [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('en', 'US'), // English (default)
+        Locale('en', 'US'), // English
         Locale('id', 'ID'), // Bahasa Indonesia
       ],
     );

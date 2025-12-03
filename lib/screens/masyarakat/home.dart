@@ -10,15 +10,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_2/screens/masyarakat/laporan/LaporButton.dart';
 
 // --- IMPORT LAYAR LAIN ---
-import '../masyarakat/laporan/RiwayatLaporanScreen.dart'; 
+import '../masyarakat/laporan/RiwayatLaporanScreen.dart';
 import './laporan/LaporanDarurat.dart';
 import './DaftarKunjungan.dart';
+
+// --- PENTING: IMPORT HALAMAN LOGIN ANDA DI SINI ---
+// Contoh: import 'package:flutter_application_2/screens/auth/LoginScreen.dart';
+// Ganti baris di bawah ini sesuai lokasi file LoginScreen Anda
+import '../auth/Login.dart'; 
 
 // --- IMPORT MODEL ---
 import '../../models/edukasi.dart';
 
-// --- PERBAIKAN IMPORT API SERVICE (Menggunakan 'as' untuk hindari konflik) ---
-import '../../methods/api.dart' as method_api; 
+// --- IMPORT API SERVICE ---
+import '../../methods/api.dart' as method_api;
 
 class MasyarakatHomeScreen extends StatefulWidget {
   const MasyarakatHomeScreen({super.key});
@@ -31,8 +36,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
   late Future<List<Edukasi>> futureEdukasi;
 
   String _userName = "Memuat...";
-  // Variabel _userId digunakan di logic loadUserData, jadi warning unused field diabaikan dulu
-  int _userId = 0; 
+  int _userId = 0;
 
   final Color primaryColor = Colors.red.shade800;
   final Color secondaryColor = Colors.red.shade600;
@@ -50,17 +54,15 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
 
   void _loadEdukasi() {
     setState(() {
-      // PERBAIKAN: Menggunakan prefix 'method_api'
-      futureEdukasi = method_api.ApiService().getEdukasi(); 
+      futureEdukasi = method_api.ApiService().getEdukasi();
     });
-    debugPrint("CATATAN: Memanggil method 'getEdukasi' dari ApiService.");
   }
 
   Future<void> _loadUserData() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? userName = prefs.getString('userName'); 
-      final int? userId = prefs.getInt('userId'); 
+      final String? userName = prefs.getString('userName');
+      final int? userId = prefs.getInt('userId');
 
       if (userName == null || userName.isEmpty || userId == null) {
         throw Exception("Data pengguna tidak lengkap");
@@ -68,18 +70,69 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
 
       if (mounted) {
         setState(() {
-          _userName = userName; 
-          _userId = userId; 
+          _userName = userName;
+          _userId = userId;
         });
       }
     } catch (e) {
-      debugPrint("Gagal memuat data pengguna: $e"); 
+      debugPrint("Gagal memuat data pengguna: $e");
       if (mounted) {
         setState(() {
-          _userName = "Tamu"; 
-          _userId = 0 ; 
+          _userName = "Tamu";
+          _userId = 0;
         });
       }
+    }
+  }
+
+  // --- FUNGSI LOGOUT (BARU) ---
+  Future<void> _handleLogout() async {
+    // 1. Tampilkan Dialog Konfirmasi
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Keluar'),
+        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Keluar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    // Jika user menekan 'Batal' atau klik di luar dialog
+    if (confirm != true) return;
+
+    // 2. Proses Logout
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.clear(); // Menghapus semua data sesi (Login)
+
+      if (!mounted) return;
+
+      // 3. Navigasi ke Halaman Login dan hapus semua history halaman sebelumnya
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          // Pastikan Anda sudah import LoginScreen() yang benar
+          builder: (context) => const LoginScreen(), 
+        ),
+        (Route<dynamic> route) => false,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Berhasil keluar')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal keluar: $e')),
+      );
     }
   }
 
@@ -104,10 +157,18 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           'Pemadam Kebakaran\nKabupaten Subang',
           style: TextStyle(fontSize: 16, color: Colors.white),
         ),
+        // --- TOMBOL LOGOUT DI APPBAR (BARU) ---
+        actions: [
+          IconButton(
+            onPressed: _handleLogout,
+            icon: const Icon(Icons.logout_rounded, color: Colors.white),
+            tooltip: 'Keluar',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0), 
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -171,11 +232,11 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
 
               // 5. Section Materi Edukasi (Slider)
               _buildEdukasiSliderSection(
-                  context,
-                  cardColor,
-                  textColor,
-                  subtleTextColor,
-                ),
+                context,
+                cardColor,
+                textColor,
+                subtleTextColor,
+              ),
               const SizedBox(height: 24),
             ],
           ),
@@ -218,7 +279,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     );
   }
 
-// --- Helper Widgets ---
+  // --- Helper Widgets ---
   Widget _buildLaporSection(
     BuildContext context,
     Color primaryColor,
@@ -227,9 +288,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     return Column(
       children: [
         // Pastikan widget LaporButton Anda memang menerima parameter ini
-        LaporButton(
-          
-        ),
+        LaporButton(),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -284,7 +343,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     Color textColor,
   ) {
     final List<Map<String, dynamic>> services = [
-     {
+      {
         'icon': Icons.local_fire_department,
         'label': 'Lapor\nKebakaran',
         'action': () {
@@ -300,14 +359,14 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
         'icon': Icons.support,
         'label': 'Lapor Non\nKebakaran',
         'action': () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const LaporanDarurat(),
-              ),
-            );
-          },
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const LaporanDarurat(),
+            ),
+          );
         },
+      },
       {
         'icon': Icons.bar_chart,
         'label': 'Grafik\nKejadian',
@@ -420,7 +479,6 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     );
   }
 
-  // --- MODIFIKASI UTAMA: Edukasi Slider Section ---
   Widget _buildEdukasiSliderSection(
     BuildContext context,
     Color cardColor,
@@ -430,7 +488,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Judul Header dengan Padding karena keluar dari SingleScrollView padding utama
+        // Judul Header
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
@@ -440,10 +498,9 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                 'Materi Edukasi',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              // Tombol Lihat Semua opsional
               TextButton(
                 onPressed: () {
-                   Navigator.push(
+                  Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const EdukasiListScreen(),
@@ -456,7 +513,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        
+
         // FutureBuilder untuk Slider
         FutureBuilder<List<Edukasi>>(
           future: futureEdukasi,
@@ -475,24 +532,20 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
               );
             }
 
-            // 1. Ambil Data dan LIMIT jadi 4 saja
             final allEdukasi = snapshot.data!;
             final limitedEdukasi = allEdukasi.take(4).toList();
 
-            // 2. Buat Horizontal List (Slider)
             return SizedBox(
-              height: 140, // Tentukan tinggi tetap untuk slider
+              height: 140,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: limitedEdukasi.length,
-                padding: const EdgeInsets.symmetric(horizontal: 16.0), // Padding awal & akhir list
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 itemBuilder: (context, index) {
                   final edukasi = limitedEdukasi[index];
-                  
-                  // Bungkus card agar punya lebar tetap saat di-slide
                   return Container(
-                    width: 300, // Lebar per item slider
-                    margin: const EdgeInsets.only(right: 12.0), // Jarak antar item
+                    width: 300,
+                    margin: const EdgeInsets.only(right: 12.0),
                     child: _buildEdukasiCard(
                       edukasi,
                       cardColor,
@@ -510,7 +563,6 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     );
   }
 
-  // Widget Card Edukasi (Sedikit disesuaikan untuk Slider)
   Widget _buildEdukasiCard(
     Edukasi edukasi,
     Color cardColor,
@@ -525,8 +577,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
     final String formattedDate =
         '${edukasi.timestampDibuat.day}/${edukasi.timestampDibuat.month}/${edukasi.timestampDibuat.year}';
 
-    final bool isPdf =
-        edukasi.fileUrl != null &&
+    final bool isPdf = edukasi.fileUrl != null &&
         edukasi.fileUrl!.toLowerCase().endsWith('.pdf');
 
     return Card(
@@ -536,13 +587,12 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-           // Aktifkan navigasi detail jika diperlukan
-           Navigator.push(
-             context,
-             MaterialPageRoute(
-               builder: (context) => DetailEdukasiScreen(edukasi: edukasi),
-             ),
-           );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DetailEdukasiScreen(edukasi: edukasi),
+            ),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -556,7 +606,7 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                     Text(
                       edukasi.judul,
                       style: TextStyle(
-                        fontSize: 14, // Font sedikit diperkecil agar muat di slider
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
@@ -582,7 +632,6 @@ class _MasyarakatHomeScreenState extends State<MasyarakatHomeScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Gambar / Icon PDF
               ClipRRect(
                 borderRadius: BorderRadius.circular(8.0),
                 child: isPdf
