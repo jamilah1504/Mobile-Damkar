@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io'; // Tetap butuh untuk Mobile/Desktop
-import 'package:flutter/foundation.dart'; // [BARU] Untuk cek kIsWeb
+import 'dart:io'; 
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,7 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'home.dart';
+import 'home.dart'; // Pastikan import PanggilanLaporan
 
 enum TaskState { ready, onTheWay, arrived, reporting }
 
@@ -42,10 +42,7 @@ class _DetailTugasScreenState extends State<DetailTugasScreen> {
   final TextEditingController _penyebabController = TextEditingController();
   final TextEditingController _catatanController = TextEditingController();
   
-  // [PERBAIKAN 1] Ganti File? jadi XFile? agar support Web
   XFile? _selectedImage; 
-
-  // Sesuaikan URL Backend Anda
   final String _baseUrl = 'http://localhost:5000'; 
 
   @override
@@ -54,10 +51,9 @@ class _DetailTugasScreenState extends State<DetailTugasScreen> {
     super.dispose();
   }
 
-Future<String?> _getToken() async {
+  Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    // Langsung kembalikan token tanpa popup
-    return prefs.getString('authToken') ?? prefs.getString('token');
+    return prefs.getString('authToken') ?? prefs.getString('token'); 
   }
 
   Future<void> _openGoogleMaps() async {
@@ -72,13 +68,12 @@ Future<String?> _getToken() async {
     }
 
     final Uri googleMapsUrl = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng'
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
     );
 
     try {
       await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
     } catch (e) {
-      // Fallback jika gagal buka app, buka di browser
       await launchUrl(googleMapsUrl, mode: LaunchMode.platformDefault);
     }
   }
@@ -107,7 +102,6 @@ Future<String?> _getToken() async {
   }
 
   // --- API CALLS ---
-
   Future<void> _handleTerimaTugas() async {
     try {
       final token = await _getToken();
@@ -130,9 +124,7 @@ Future<String?> _getToken() async {
           _startTimer();
         });
         widget.onTerimaTugas();
-      } else {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: ${response.body}')));
-      }
+      } 
     } catch (e) {
       print("Error start tugas: $e");
     }
@@ -166,7 +158,7 @@ Future<String?> _getToken() async {
     try {
       final token = await _getToken();
       final response = await http.put(
-        Uri.parse('$_baseUrl/api/tugas/handle'),
+        Uri.parse('$_baseUrl/api/tugas/handle'), // Pastikan route handle sudah ada di backend
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -180,21 +172,16 @@ Future<String?> _getToken() async {
         });
       }
     } catch (e) {
-      print("Error finish tugas: $e");
+      print("Error handle tugas: $e");
     }
   }
 
-  // [PERBAIKAN 2] Upload Gambar Support Web & Mobile
   Future<void> _handleSubmitLaporan() async {
     if (!_formKey.currentState!.validate()) return;
 
     try {
       final token = await _getToken();
-
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$_baseUrl/api/laporan-lapangan'),
-      );
+      var request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/laporan-lapangan'));
 
       request.headers['Authorization'] = 'Bearer $token';
       request.fields['tugasId'] = _tugasId.toString();
@@ -203,23 +190,12 @@ Future<String?> _getToken() async {
       request.fields['dugaanPenyebab'] = _penyebabController.text;
       request.fields['catatan'] = _catatanController.text;
 
-      // Logika Upload Gambar
       if (_selectedImage != null) {
         if (kIsWeb) {
-          // KHUSUS WEB: Baca bytes
           var bytes = await _selectedImage!.readAsBytes();
-          request.files.add(
-            http.MultipartFile.fromBytes(
-              'files', // Sesuaikan dengan key di backend Anda (misal 'files' atau 'gambar')
-              bytes,
-              filename: _selectedImage!.name,
-            ),
-          );
+          request.files.add(http.MultipartFile.fromBytes('files', bytes, filename: _selectedImage!.name));
         } else {
-          // KHUSUS MOBILE/DESKTOP: Pakai Path
-          request.files.add(
-            await http.MultipartFile.fromPath('files', _selectedImage!.path),
-          );
+          request.files.add(await http.MultipartFile.fromPath('files', _selectedImage!.path));
         }
       }
 
@@ -227,16 +203,7 @@ Future<String?> _getToken() async {
       if (res.statusCode == 201) {
         if (mounted) {
           Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Laporan Berhasil Disimpan!')),
-          );
-        }
-      } else {
-        final respStr = await res.stream.bytesToString();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal upload: $respStr')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Laporan Berhasil Disimpan!')));
         }
       }
     } catch (e) {
@@ -244,14 +211,12 @@ Future<String?> _getToken() async {
     }
   }
 
-  // [PERBAIKAN 3] Pick Image simpan ke XFile
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.camera);
-    
     if (pickedFile != null) {
       setState(() {
-        _selectedImage = pickedFile; // Simpan sebagai XFile
+        _selectedImage = pickedFile;
       });
     }
   }
@@ -268,53 +233,34 @@ Future<String?> _getToken() async {
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // PETA
+          // PETA BACKGROUND
           if (_currentState != TaskState.reporting)
             Positioned.fill(
               bottom: MediaQuery.of(context).size.height * 0.35,
-              child: Stack(
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: centerLocation,
+                  initialZoom: 15.0,
+                ),
                 children: [
-                  FlutterMap(
-                    options: MapOptions(
-                      initialCenter: centerLocation,
-                      initialZoom: 15.0,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: centerLocation,
-                            width: 80,
-                            height: 80,
-                            child: const Icon(
-                              Icons.location_on,
-                              color: Colors.red,
-                              size: 50,
-                            ),
-                          ),
-                        ],
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: centerLocation,
+                        width: 80,
+                        height: 80,
+                        child: const Icon(Icons.location_on, color: Colors.red, size: 50),
                       ),
                     ],
                   ),
-                  if(hasCoordinates)
-                    Positioned(
-                      bottom: 20,
-                      right: 16,
-                      child: FloatingActionButton.extended(
-                        onPressed: _openGoogleMaps,
-                        backgroundColor: Colors.blueAccent,
-                        icon: const Icon(Icons.directions, color: Colors.white),
-                        label: const Text("Rute", style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
                 ],
               ),
             ),
 
-          // Header Back Button
+          // HEADER (BACK BUTTON)
           Positioned(
             top: 40,
             left: 16,
@@ -338,7 +284,7 @@ Future<String?> _getToken() async {
             ),
           ),
 
-          // Timer
+          // INFO TIMER (JIKA ON THE WAY)
           if (_currentState == TaskState.onTheWay)
             Positioned(
               top: 100,
@@ -356,7 +302,7 @@ Future<String?> _getToken() async {
               ),
             ),
 
-          // Pesan Tiba
+          // INFO TIBA
           if (_currentState == TaskState.arrived && _startTime != null && _arrivalTime != null)
             Positioned(
               top: 100,
@@ -373,18 +319,20 @@ Future<String?> _getToken() async {
               ),
             ),
 
-          // Bottom Sheet
+          // BOTTOM SHEET (PANEL PUTIH)
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
-              height: _currentState == TaskState.reporting ? MediaQuery.of(context).size.height * 0.85 : MediaQuery.of(context).size.height * 0.40,
+              height: _currentState == TaskState.reporting ? MediaQuery.of(context).size.height * 0.85 : MediaQuery.of(context).size.height * 0.45, // Sedikit dipertinggi agar muat tombol Rute
               width: double.infinity,
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.only(topLeft: Radius.circular(30), topRight: Radius.circular(30)),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))],
               ),
-              child: _currentState == TaskState.reporting ? _buildReportingForm(primaryColor) : _buildTaskInfo(primaryColor),
+              child: _currentState == TaskState.reporting 
+                  ? _buildReportingForm(primaryColor) 
+                  : _buildTaskInfo(primaryColor, hasCoordinates),
             ),
           ),
         ],
@@ -392,7 +340,7 @@ Future<String?> _getToken() async {
     );
   }
 
-  Widget _buildTaskInfo(Color primaryColor) {
+  Widget _buildTaskInfo(Color primaryColor, bool hasCoordinates) {
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -404,13 +352,36 @@ Future<String?> _getToken() async {
             maxLines: 1, overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
-          Row(children: [const Icon(Icons.map, size: 16, color: Colors.grey), const SizedBox(width: 5), Expanded(child: Text(widget.laporan.alamatKejadian, style: const TextStyle(color: Colors.black87), maxLines: 2))]),
+          
+          // ALAMAT
+          Row(children: [
+            const Icon(Icons.map, size: 16, color: Colors.grey), 
+            const SizedBox(width: 5), 
+            Expanded(child: Text(widget.laporan.alamatKejadian, style: const TextStyle(color: Colors.black87), maxLines: 2))
+          ]),
+          
           const SizedBox(height: 8),
-          Text("WAKTU TIBA : ${_arrivalTime != null ? DateFormat('HH:mm').format(_arrivalTime!) : '-'}", style: const TextStyle(fontWeight: FontWeight.bold)),
+
+          // [REVISI] TOMBOL RUTE GOOGLE MAPS (DISINI, BUKAN NUMPUK DI PETA)
+          if(hasCoordinates)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openGoogleMaps,
+                icon: const Icon(Icons.map_outlined),
+                label: const Text("Buka Rute Google Maps"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue[700],
+                  side: BorderSide(color: Colors.blue.shade700),
+                  padding: const EdgeInsets.symmetric(vertical: 10)
+                ),
+              ),
+            ),
+
           const Divider(),
           const Text("Kronologi:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
-          Text(widget.laporan.deskripsi, maxLines: 3, overflow: TextOverflow.ellipsis),
-          const Spacer(),
+          Expanded(child: SingleChildScrollView(child: Text(widget.laporan.deskripsi))),
+          
           SizedBox(width: double.infinity, child: _buildActionBtn()),
         ],
       ),
@@ -450,35 +421,17 @@ Future<String?> _getToken() async {
                     child: Container(
                       height: 150,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      decoration: BoxDecoration(color: Colors.grey[100], border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(10)),
                       child: _selectedImage == null
-                          ? const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.camera_alt, size: 40, color: Colors.grey),
-                                Text("Tap untuk ambil foto"),
-                              ],
-                            )
+                          ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt, size: 40, color: Colors.grey), Text("Tap untuk ambil foto")])
                           : ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  // [PERBAIKAN UTAMA] Gunakan logika ini
-                                  child: kIsWeb
-                                      ? Image.network(
-                                          _selectedImage!.path, // Web pakai ini
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (c, o, s) => const Icon(Icons.error),
-                                        )
-                                      : Image.file(
-                                          File(_selectedImage!.path), // HP pakai ini
-                                          fit: BoxFit.cover,
-                                        ),
-                                  ),
-                          ),
-                        ),
+                              borderRadius: BorderRadius.circular(10),
+                              child: kIsWeb 
+                                ? Image.network(_selectedImage!.path, fit: BoxFit.cover, errorBuilder: (c, o, s) => const Icon(Icons.error)) 
+                                : Image.file(File(_selectedImage!.path), fit: BoxFit.cover),
+                            ),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   TextFormField(controller: _korbanController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Jumlah Korban', border: OutlineInputBorder(), prefixIcon: Icon(Icons.people))),
                   const SizedBox(height: 10),
