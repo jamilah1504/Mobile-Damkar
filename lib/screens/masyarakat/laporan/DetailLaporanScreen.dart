@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 
-// Import Model
+// Import Model (Pastikan path ini sesuai project Anda)
 import '../../../models/laporan.dart'; 
 
 class DetailLaporanScreen extends StatelessWidget {
@@ -34,7 +34,7 @@ class DetailLaporanScreen extends StatelessWidget {
     }
   }
 
-  // --- 3. FORMAT RUPIAH (BARU) ---
+  // --- 3. FORMAT RUPIAH ---
   String _formatRupiah(dynamic number) {
     if (number == null) return 'Rp 0';
     final currencyFormatter = NumberFormat.currency(
@@ -45,20 +45,23 @@ class DetailLaporanScreen extends StatelessWidget {
     return currencyFormatter.format(number);
   }
 
-  // --- 4. HELPER AMBIL LAPORAN LAPANGAN (FINAL) ---
+  // --- 4. HELPER AMBIL LAPORAN LAPANGAN (Sesuai Logika TSX) ---
+  // TSX Logic: laporan.InsidenTerkait?.Tugas?.laporanLapangan
   Map<String, dynamic>? _getLaporanLapangan() {
     try {
-      final dynamic insidenObj = laporan.insiden;
+      // 1. Ambil Insiden (Di Model Dart Anda mungkin bernama 'insiden' atau 'InsidenTerkait')
+      final dynamic insidenObj = laporan.insiden; 
       if (insidenObj == null) return null;
 
       final Map<String, dynamic> insidenMap = Map<String, dynamic>.from(insidenObj as Map);
       
-      // Cek Tugas
-      final dynamic tugasObj = insidenMap['tugas'] ?? insidenMap['Tugas'];
+      // 2. Ambil Tugas (Bisa 'Tugas' atau 'tugas')
+      final dynamic tugasObj = insidenMap['Tugas'] ?? insidenMap['tugas'];
       if (tugasObj == null) return null;
 
-      // Handle Tugas sebagai List atau Object
       Map<String, dynamic> tugasItem;
+
+      // Handle jika Tugas berupa List (Array) atau Object (Single)
       if (tugasObj is List) {
         if (tugasObj.isEmpty) return null;
         tugasItem = Map<String, dynamic>.from(tugasObj[0]);
@@ -68,7 +71,7 @@ class DetailLaporanScreen extends StatelessWidget {
         return null;
       }
 
-      // Ambil Laporan Lapangan
+      // 3. Ambil laporanLapangan
       final lapLap = tugasItem['laporanLapangan'] ?? tugasItem['LaporanLapangan'];
       if (lapLap != null) {
         return Map<String, dynamic>.from(lapLap);
@@ -86,7 +89,7 @@ class DetailLaporanScreen extends StatelessWidget {
     final hasLaporanLapangan = laporanLapangan != null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF8F9FA), // Sama dengan TSX bgcolor
       appBar: AppBar(
         title: const Text('Detail Laporan', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.red.shade800,
@@ -101,7 +104,7 @@ class DetailLaporanScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // === BAGIAN 1: INFO UTAMA (Sama seperti Web Kolom Kiri) ===
+            // === BAGIAN 1: INFO UTAMA ===
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -116,12 +119,20 @@ class DetailLaporanScreen extends StatelessWidget {
                       style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red.shade800),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(_formatDate(laporan.timestampDibuat), style: TextStyle(color: Colors.grey[700], fontSize: 13)),
-                      ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(4)
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                          const SizedBox(width: 6),
+                          Text(_formatDate(laporan.timestampDibuat), style: TextStyle(color: Colors.grey[700], fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
                     ),
                     const Divider(height: 30),
 
@@ -129,7 +140,7 @@ class DetailLaporanScreen extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       laporan.deskripsi,
-                      style: TextStyle(fontSize: 15, height: 1.5, color: Colors.grey.shade800),
+                      style: TextStyle(fontSize: 15, height: 1.6, color: Colors.grey.shade800),
                     ),
                     const SizedBox(height: 20),
 
@@ -152,7 +163,8 @@ class DetailLaporanScreen extends StatelessWidget {
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red.shade800,
                               side: BorderSide(color: Colors.red.shade800),
-                              padding: const EdgeInsets.symmetric(vertical: 10)
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
                             ),
                           ),
                         ),
@@ -169,18 +181,18 @@ class DetailLaporanScreen extends StatelessWidget {
             
             const SizedBox(height: 20),
 
-            // === BAGIAN 2: DETAIL TERKAIT (Pelapor & Insiden) ===
-            // Meniru "Informasi Tambahan" di Web
+            // === BAGIAN 2: INFO TAMBAHAN (Pelapor & Insiden) ===
             if (laporan.pelapor != null || laporan.insiden != null)
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                color: Colors.white,
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Informasi Tambahan", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                      const Text("Informasi Tambahan", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
                       const SizedBox(height: 16),
                       
                       // Info Pelapor
@@ -189,7 +201,7 @@ class DetailLaporanScreen extends StatelessWidget {
                           children: [
                             CircleAvatar(
                               radius: 20,
-                              backgroundColor: Colors.blue.shade50,
+                              backgroundColor: Colors.blue.shade50, // Matches 'primary.main' bg intent
                               child: Icon(Icons.person, color: Colors.blue.shade800, size: 20),
                             ),
                             const SizedBox(width: 12),
@@ -207,19 +219,16 @@ class DetailLaporanScreen extends StatelessWidget {
                         ),
                       
                       if (laporan.pelapor != null && laporan.insiden != null)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Divider(),
-                        ),
+                         const SizedBox(height: 16),
 
-                      // Info Insiden (Dari Backend 'insiden')
+                      // Info Insiden
                       if (laporan.insiden != null)
                         Row(
                           children: [
                             CircleAvatar(
                               radius: 20,
-                              backgroundColor: Colors.orange.shade50,
-                              child: Icon(Icons.local_fire_department, color: Colors.orange.shade800, size: 20),
+                              backgroundColor: Colors.lightBlue.shade50, // Matches 'info.main'
+                              child: Icon(Icons.info, color: Colors.lightBlue.shade800, size: 20),
                             ),
                             const SizedBox(width: 12),
                             Expanded( 
@@ -233,7 +242,7 @@ class DetailLaporanScreen extends StatelessWidget {
                                   ),
                                   Text(
                                     laporan.insiden!['judulInsiden'] ?? '',
-                                    style: const TextStyle(fontSize: 13, color: Colors.grey),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey, height: 1.2),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -249,15 +258,16 @@ class DetailLaporanScreen extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // === BAGIAN 3: LAPORAN LAPANGAN (HASIL PENANGANAN) ===
-            // Style mirip Web: Hijau jika ada, Oranye jika kosong
+            // === BAGIAN 3: LAPORAN LAPANGAN (SESUAI TSX) ===
             Card(
               elevation: 2,
-              color: hasLaporanLapangan ? const Color(0xFFF1F8E9) : const Color(0xFFFFF8E1), // Hijau Muda vs Oranye Muda
+              // Logika Warna Background persis TSX
+              color: hasLaporanLapangan ? const Color(0xFFF1F8E9) : const Color(0xFFFFF8E1), 
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
-                  color: hasLaporanLapangan ? Colors.green.shade300 : Colors.orange.shade300,
+                  // Logika Warna Border persis TSX
+                  color: hasLaporanLapangan ? const Color(0xFF81C784) : const Color(0xFFFFB74D),
                   width: 1
                 )
               ),
@@ -270,7 +280,8 @@ class DetailLaporanScreen extends StatelessWidget {
                       children: [
                         Icon(
                           hasLaporanLapangan ? Icons.check_circle : Icons.warning_amber_rounded,
-                          color: hasLaporanLapangan ? Colors.green[800] : Colors.orange[800],
+                          // Logika Warna Icon (Success vs Warning)
+                          color: hasLaporanLapangan ? const Color(0xFF2E7D32) : const Color(0xFFED6C02),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -279,7 +290,8 @@ class DetailLaporanScreen extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 16, 
                               fontWeight: FontWeight.bold,
-                              color: hasLaporanLapangan ? Colors.green[900] : Colors.orange[900]
+                              // Logika Warna Teks Judul
+                              color: hasLaporanLapangan ? const Color(0xFF2E7D32) : const Color(0xFFED6C02)
                             ),
                           ),
                         ),
@@ -288,19 +300,24 @@ class DetailLaporanScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     
                     if (hasLaporanLapangan) ...[
-                      // Gunakan Divider putus-putus
+                      // Isi Konten Laporan Lapangan (Sesuai TSX)
+                      _buildResultItem("Jumlah Korban", "${laporanLapangan['jumlahKorban'] ?? 0} orang"),
                       _buildDashedDivider(),
-                      _buildResultItem("Jumlah Korban", "${laporanLapangan!['jumlahKorban'] ?? 0} orang"),
-                      _buildDashedDivider(),
+                      
+                      // Estimasi Kerugian (Warna Merah Sesuai TSX 'error.main')
                       _buildResultItem("Estimasi Kerugian", _formatRupiah(laporanLapangan['estimasiKerugian']), isRed: true),
                       _buildDashedDivider(),
-                      _buildResultItem("Dugaan Penyebab", "${laporanLapangan['dugaanPenyebab'] ?? '-'}"),
+                      
+                      // Dugaan Penyebab (Pakai Tanda Kutip)
+                      _buildResultItem("Dugaan Penyebab", "\"${laporanLapangan['dugaanPenyebab'] ?? '-'}\""),
                       _buildDashedDivider(),
-                      _buildResultItem("Catatan Petugas", "${laporanLapangan['catatan'] ?? '-'}", isItalic: true),
+                      
+                      // Catatan (Italic & Pakai Tanda Kutip)
+                      _buildResultItem("Catatan Petugas", "\"${laporanLapangan['catatan'] ?? '-'}\"", isItalic: true),
                     ] else 
                       Text(
                         "Petugas damkar belum mengisi laporan hasil penanganan di lapangan. Mohon tunggu hingga proses selesai.",
-                        style: TextStyle(color: Colors.grey[800], height: 1.4),
+                        style: TextStyle(color: Colors.grey[700], fontSize: 14),
                       ),
                   ],
                 ),
@@ -313,16 +330,16 @@ class DetailLaporanScreen extends StatelessWidget {
             if (laporan.dokumentasi.isNotEmpty) ...[
               const Align(
                 alignment: Alignment.centerLeft,
-                child: Text("Dokumentasi Bukti", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: Text("Dokumentasi Bukti", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                   childAspectRatio: 1.1,
                 ),
                 itemCount: laporan.dokumentasi.length,
@@ -340,12 +357,14 @@ class DetailLaporanScreen extends StatelessWidget {
                         );
                       } else {
                         showDialog(context: context, builder: (_) => Dialog(
+                          backgroundColor: Colors.transparent,
                           child: InteractiveViewer(
                             child: Image.network(
                               fullUrl,
-                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 50),
+                              loadingBuilder: (ctx, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 50, color: Colors.white),
                             ),
-                          )
+                          ),
                         ));
                       }
                     },
@@ -354,6 +373,7 @@ class DetailLaporanScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                         color: Colors.grey[200],
                         border: Border.all(color: Colors.grey.shade300),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
                         image: isVideo ? null : DecorationImage(
                           image: NetworkImage(fullUrl),
                           fit: BoxFit.cover,
@@ -373,14 +393,14 @@ class DetailLaporanScreen extends StatelessWidget {
                           Positioned(
                             bottom: 0, left: 0, right: 0,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                              padding: const EdgeInsets.symmetric(vertical: 4),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.9),
                                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
                               ),
                               child: Text(
                                 doc.tipeFile, 
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isVideo ? Colors.red : Colors.blue),
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -404,7 +424,7 @@ class DetailLaporanScreen extends StatelessWidget {
     return Row(
       children: [
         Icon(icon, size: 18, color: Colors.grey[700]),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
         Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       ],
     );
@@ -413,30 +433,32 @@ class DetailLaporanScreen extends StatelessWidget {
   Widget _buildStatusChip(String status) {
     Color color;
     IconData icon;
+    // Konfigurasi warna mirip dengan TSX 'success', 'error', 'warning', 'info'
     switch (status) {
-      case 'Selesai': color = Colors.green; icon = Icons.check_circle; break;
-      case 'Ditolak': color = Colors.red; icon = Icons.cancel; break;
-      case 'Diproses': color = Colors.orange; icon = Icons.warning; break;
-      default: color = Colors.blue; icon = Icons.info;
+      case 'Selesai': color = const Color(0xFF2E7D32); icon = Icons.check_circle; break; // Success Green
+      case 'Ditolak': color = const Color(0xFFD32F2F); icon = Icons.cancel; break; // Error Red
+      case 'Diproses': color = const Color(0xFFED6C02); icon = Icons.warning; break; // Warning Orange
+      default: color = const Color(0xFF0288D1); icon = Icons.info; // Info Blue
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color),
+        border: Border.all(color: color.withOpacity(0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: color),
+          Icon(icon, size: 20, color: color),
           const SizedBox(width: 8),
-          Text(status, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Text(status, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 15)),
         ],
       ),
     );
   }
 
+  // Helper untuk menampilkan item hasil laporan (support warna merah & italic)
   Widget _buildResultItem(String label, String value, {bool isRed = false, bool isItalic = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -449,8 +471,8 @@ class DetailLaporanScreen extends StatelessWidget {
             value, 
             style: TextStyle(
               fontSize: 15, 
-              color: isRed ? Colors.red[800] : Colors.black87,
-              fontWeight: isRed ? FontWeight.bold : FontWeight.normal,
+              color: isRed ? const Color(0xFFD32F2F) : const Color(0xFF212121), // Merah atau Hitam
+              fontWeight: isRed ? FontWeight.bold : FontWeight.w500,
               fontStyle: isItalic ? FontStyle.italic : FontStyle.normal
             )
           ),
@@ -485,7 +507,7 @@ class DetailLaporanScreen extends StatelessWidget {
   }
 }
 
-// --- WIDGET VIDEO PLAYER ---
+// --- WIDGET VIDEO PLAYER (Tetap sama) ---
 class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
   const VideoPlayerScreen({super.key, required this.videoUrl});

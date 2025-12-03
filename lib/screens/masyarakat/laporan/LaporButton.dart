@@ -1,11 +1,12 @@
 import 'dart:convert';
-import 'dart:io'; // Tetap ada untuk Mobile, tapi kita handle Web secara khusus
-import 'package:flutter/foundation.dart'; // PENTING: Untuk cek kIsWeb
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart'; // Tambahkan ini di pubspec.yaml jika belum ada
+import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // [BARU] Import ini
 
 // ==========================================
 // 1. MODELS & SERVICES
@@ -18,7 +19,8 @@ class LaporData {
   String? alamatKejadian;
   double? latitude;
   double? longitude;
-  XFile? dokumen; // UBAH: Dari File? menjadi XFile?
+  XFile? dokumen;
+  int? pelaporId; // [BARU] Tambah field pelaporId
 
   LaporData({
     this.namaPelapor,
@@ -28,33 +30,29 @@ class LaporData {
     this.latitude,
     this.longitude,
     this.dokumen,
+    this.pelaporId, // [BARU]
   });
 }
 
 class ApiService {
-  // Ganti URL sesuai IP komputer. Jika Web, localhost biasanya bisa (tergantung setting CORS backend)
-  // Jika Android Emulator: 10.0.2.2
   static String get baseUrl {
     if (kIsWeb) return 'http://localhost:5000/api'; 
     return 'http://192.168.217.187:5000/api';
   }
 
-  // UBAH PARAMETER: Terima XFile, bukan File
   static Future<Map<String, dynamic>> analyzeVideo(XFile videoFile) async {
     var uri = Uri.parse('$baseUrl/ai/analyze-report');
     var request = http.MultipartRequest('POST', uri);
 
     if (kIsWeb) {
-      // --- LOGIC KHUSUS WEB (Kirim Bytes) ---
       var bytes = await videoFile.readAsBytes();
       request.files.add(http.MultipartFile.fromBytes(
-        'file', // Nama field harus sama dengan backend
+        'file',
         bytes,
         filename: videoFile.name,
-        contentType: MediaType('video', 'mp4'), // Sesuaikan tipe file
+        contentType: MediaType('video', 'mp4'),
       ));
     } else {
-      // --- LOGIC MOBILE (Kirim Path) ---
       request.files.add(await http.MultipartFile.fromPath('file', videoFile.path));
     }
 
@@ -74,24 +72,26 @@ class ApiService {
 
     var uri = Uri.parse('$baseUrl/reports');
     var request = http.MultipartRequest('POST', uri);
+    
     request.fields['namaPelapor'] = data.namaPelapor ?? 'Anonim';
     request.fields['jenisKejadian'] = data.jenisKejadian ?? 'Lainnya';
     request.fields['detailKejadian'] = data.detailKejadian ?? '-';
     request.fields['alamatKejadian'] = data.alamatKejadian ?? '-';
     request.fields['latitude'] = data.latitude.toString();
     request.fields['longitude'] = data.longitude.toString();
+    
+    // [BARU] Kirim pelaporId jika ada
+    if (data.pelaporId != null) {
+      request.fields['pelaporId'] = data.pelaporId.toString();
+    }
 
     if (data.dokumen != null) {
-      
-      var mimeType = MediaType('video', 'mp4'); // Default fallback
-      
-      // Deteksi sederhana berdasarkan ekstensi agar lebih akurat
+      var mimeType = MediaType('video', 'mp4');
       final ext = data.dokumen!.name.split('.').last.toLowerCase();
       if (ext == 'mov') mimeType = MediaType('video', 'quicktime');
       else if (ext == 'mkv') mimeType = MediaType('video', 'x-matroska');
 
       if (kIsWeb) {
-        // --- LOGIC WEB ---
         var bytes = await data.dokumen!.readAsBytes();
         request.files.add(http.MultipartFile.fromBytes(
           'dokumen',
@@ -100,7 +100,6 @@ class ApiService {
           contentType: mimeType,
         ));
       } else {
-        // --- LOGIC MOBILE ---
         request.files.add(await http.MultipartFile.fromPath(
           'dokumen', 
           data.dokumen!.path,
@@ -110,7 +109,6 @@ class ApiService {
     }
 
     var streamedResponse = await request.send();
-    
     final respStr = await streamedResponse.stream.bytesToString();
 
     if (streamedResponse.statusCode != 200 && streamedResponse.statusCode != 201) {
@@ -131,19 +129,20 @@ class LaporButton extends StatefulWidget {
 }
 
 class _LaporButtonState extends State<LaporButton> {
-  // State
   bool _isLoading = false;
   String _loadingText = 'MEMPROSES...';
   
-  // UBAH: Gunakan XFile agar kompatibel Web & Mobile
   XFile? _tempFile; 
   Position? _tempLocation;
   
-  // Controller... (Sama seperti sebelumnya)
   final _namaController = TextEditingController();
   final _detailController = TextEditingController();
   final _alamatController = TextEditingController();
   String? _selectedJenisKejadian;
+
+  // [BARU] Variable untuk menyimpan data user sementara
+  int _userId = 0;
+  String _userName = '';
 
   final ImagePicker _picker = ImagePicker();
 
@@ -155,7 +154,6 @@ class _LaporButtonState extends State<LaporButton> {
     super.dispose();
   }
 
-  // --- Logic 1: Ambil Lokasi ---
   Future<Position> _getCurrentLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -176,47 +174,68 @@ class _LaporButtonState extends State<LaporButton> {
     return await Geolocator.getCurrentPosition();
   }
 
-  // --- Logic 2: Handle File & AI Process ---
- Future<void> _handleFileSelection(ImageSource source) async {
+  Future<void> _handleFileSelection(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickVideo(source: source);
       if (pickedFile == null) return;
 
       setState(() {
         _isLoading = true;
-        _tempFile = pickedFile; // Langsung simpan XFile
-        _loadingText = 'MENCARI LOKASI...';
+        _tempFile = pickedFile;
+        _loadingText = 'MEMUAT DATA USER...';
       });
 
-      // 1. Ambil Lokasi
+      // [BARU] 1. Ambil data dari Local Storage (Shared Preferences)
+      final prefs = await SharedPreferences.getInstance();
+      _userId = prefs.getInt('userId') ?? 0;
+      _userName = prefs.getString('userName') ?? ''; 
+      
+      // Jika userId tersimpan sebagai String, handle fallbacknya:
+      if (_userId == 0) {
+        String? idString = prefs.getString('userId');
+        if (idString != null) _userId = int.tryParse(idString) ?? 0;
+      }
+
+      setState(() => _loadingText = 'MENCARI LOKASI...');
+
+      // 2. Ambil Lokasi
       final position = await _getCurrentLocation();
       _tempLocation = position;
 
-      // 2. Analisa AI
+      // 3. Analisa AI
       setState(() => _loadingText = 'ANALISA AI...');
-      
-      // Kirim XFile langsung ke ApiService
       final aiResult = await ApiService.analyzeVideo(_tempFile!);
       final extracted = aiResult['formData'];
 
-      // ... (Validasi kelengkapan data sama seperti sebelumnya) ...
-      bool isDataComplete = (extracted['namaPelapor'] != null && extracted['namaPelapor'] != '') &&
+      // [BARU] LOGIKA PENENTUAN NAMA
+      // Ambil nama dari AI, jika kosong ambil dari _userName (Local Storage)
+      String finalName = extracted['namaPelapor'] ?? '';
+      if (finalName.trim().isEmpty) {
+        finalName = _userName;
+      }
+
+      // Cek kelengkapan (Nama dianggap lengkap jika AI dapat atau ada di LocalStorage)
+      bool isDataComplete = (finalName.isNotEmpty) &&
                             (extracted['jenisKejadian'] != null && extracted['jenisKejadian'] != '') &&
                             (extracted['alamatKejadian'] != null && extracted['alamatKejadian'] != '');
-
 
       if (isDataComplete) {
         setState(() => _loadingText = 'MENGIRIM...');
         await _executeSubmit(LaporData(
-          namaPelapor: extracted['namaPelapor'],
+          namaPelapor: finalName, // Pakai nama yang sudah diproses
           jenisKejadian: extracted['jenisKejadian'],
           detailKejadian: extracted['detailKejadian'],
           alamatKejadian: extracted['alamatKejadian'],
           latitude: position.latitude,
           longitude: position.longitude,
           dokumen: _tempFile,
+          pelaporId: _userId, // [BARU] Kirim userId sebagai pelaporId
         ));
       } else {
+        // Jika data tidak lengkap, buka form manual
+        // Update extracted data dengan nama fix agar form terisi otomatis
+        extracted['namaPelapor'] = finalName;
+        
         _prefillManualForm(extracted);
         setState(() => _isLoading = false);
         if (mounted) _showManualFormDialog();
@@ -230,12 +249,11 @@ class _LaporButtonState extends State<LaporButton> {
 
   void _prefillManualForm(Map<String, dynamic> data) {
     _namaController.text = data['namaPelapor'] ?? '';
-    _selectedJenisKejadian = data['jenisKejadian']; // Pastikan value match dengan dropdown
+    _selectedJenisKejadian = data['jenisKejadian'];
     _detailController.text = data['detailKejadian'] ?? '';
     _alamatController.text = data['alamatKejadian'] ?? '';
   }
 
-  // --- Logic 3: Submit Final ---
   Future<void> _executeSubmit(LaporData data) async {
     try {
       await ApiService.submitLaporan(data);
@@ -259,7 +277,7 @@ class _LaporButtonState extends State<LaporButton> {
     });
   }
 
-  // --- UI Helpers: Notifications & Popups ---
+  // --- UI Helpers --- (Tidak ada perubahan signifikan di bawah ini, kecuali pemanggilan _executeSubmit di dialog)
 
   void _showNotification(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -357,7 +375,7 @@ class _LaporButtonState extends State<LaporButton> {
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return StatefulBuilder( // Agar state form bisa update di dalam dialog
+        return StatefulBuilder(
           builder: (context, setStateDialog) {
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -365,7 +383,6 @@ class _LaporButtonState extends State<LaporButton> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -389,7 +406,6 @@ class _LaporButtonState extends State<LaporButton> {
                         ],
                       ),
                     ),
-                    // Form Body
                     Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(
@@ -446,6 +462,7 @@ class _LaporButtonState extends State<LaporButton> {
                                       _isLoading = true;
                                       _loadingText = "MENGIRIM MANUAL...";
                                     });
+                                    // [BARU] Kirim manual juga menyertakan _userId
                                     _executeSubmit(LaporData(
                                       namaPelapor: _namaController.text,
                                       jenisKejadian: _selectedJenisKejadian,
@@ -454,6 +471,7 @@ class _LaporButtonState extends State<LaporButton> {
                                       latitude: _tempLocation?.latitude,
                                       longitude: _tempLocation?.longitude,
                                       dokumen: _tempFile,
+                                      pelaporId: _userId, // [BARU]
                                     ));
                                   },
                                 ),
@@ -491,26 +509,20 @@ class _LaporButtonState extends State<LaporButton> {
     );
   }
 
-  // ==========================================
-  // 3. RENDER (BUILD)
-  // ==========================================
   @override
   Widget build(BuildContext context) {
-    // Definisi warna agar sesuai dengan snippet desain
-    // Anda bisa memindahkannya ke global theme jika perlu
     const Color primaryColor = Colors.red; 
     final Color secondaryColor = Colors.red.shade100;
 
     return Center(
       child: GestureDetector(
-        // LOGIC: Jika loading, tombol tidak bisa ditekan
         onTap: _isLoading ? null : _showSourceMenu,
         child: Container(
           width: 150,
           height: 150,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: secondaryColor, // Warna lingkaran luar
+            color: secondaryColor,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.2),
@@ -526,10 +538,9 @@ class _LaporButtonState extends State<LaporButton> {
               height: 130,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: primaryColor, // Warna lingkaran dalam
+                color: primaryColor,
               ),
               child: Center(
-                // LOGIC: Mengatur tampilan saat Loading vs Standby
                 child: _isLoading
                     ? Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -546,11 +557,11 @@ class _LaporButtonState extends State<LaporButton> {
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8.0),
                             child: Text(
-                              _loadingText, // Text dinamis (Mencari lokasi/Analisa AI)
+                              _loadingText,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 10, // Font diperkecil agar muat di lingkaran
+                                fontSize: 10,
                                 fontWeight: FontWeight.w500,
                               ),
                               maxLines: 2,
@@ -562,7 +573,6 @@ class _LaporButtonState extends State<LaporButton> {
                     : const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // PERUBAHAN: Icon mic diganti menjadi videocam
                           Icon(Icons.videocam, color: Colors.white, size: 40),
                           SizedBox(height: 5),
                           Text(

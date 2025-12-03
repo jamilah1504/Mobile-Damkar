@@ -1,56 +1,95 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io'; // Untuk deteksi Platform
-import 'package:flutter/foundation.dart'; // Untuk kIsWeb
+import 'dart:io'; 
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 // ==================== 1. MODEL DATA ====================
-class LokasiRawan {
-  final int id;
-  final String namaLokasi;
-  final String deskripsi;
+
+class MapItem {
+  final int originalId;
+  final String type; // 'rawan' atau 'laporan'
+  final String title;
+  final String description;
   final double latitude;
   final double longitude;
-  final List<String> images;
-  final String thumbnail;
+  final String mediaUrl; // Bisa URL Gambar atau Video
+  final bool isVideo;    // Penanda apakah ini video
+  final String status;   
 
-  LokasiRawan({
-    required this.id,
-    required this.namaLokasi,
-    required this.deskripsi,
+  MapItem({
+    required this.originalId,
+    required this.type,
+    required this.title,
+    required this.description,
     required this.latitude,
     required this.longitude,
-    required this.images,
-    required this.thumbnail,
+    required this.mediaUrl,
+    required this.isVideo,
+    this.status = '',
   });
 
-  factory LokasiRawan.fromJson(Map<String, dynamic> json) {
-    // Parsing array images dengan aman
+  String get uniqueId => "$type-$originalId";
+
+  // Helper untuk cek ekstensi video
+  static bool _checkIsVideo(String url, String? explicitType) {
+    if (explicitType != null && explicitType.toLowerCase() == 'video') return true;
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.mov') || lowerUrl.endsWith('.avi') || lowerUrl.endsWith('.mkv');
+  }
+
+  // Factory untuk Lokasi Rawan
+  factory MapItem.fromLokasiRawan(Map<String, dynamic> json, String baseUrl) {
     List<String> imgs = [];
     if (json['images'] != null) {
       imgs = List<String>.from(json['images']);
     }
+    
+    String rawUrl = imgs.isNotEmpty ? imgs[0] : '';
+    String fullUrl = rawUrl.startsWith('http') ? rawUrl : (rawUrl.isNotEmpty ? '$baseUrl$rawUrl' : '');
+    bool isVid = _checkIsVideo(rawUrl, null);
 
-    // Gambar default jika kosong
-    String defaultImage = 'https://via.placeholder.com/150?text=No+Image';
-    if (imgs.isNotEmpty) {
-      defaultImage = imgs[0];
-    }
-
-    return LokasiRawan(
-      id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
-      namaLokasi: json['namaLokasi'] ?? 'Lokasi Tanpa Nama',
-      deskripsi: json['deskripsi'] ?? 'Tidak ada deskripsi',
-      // Menggunakan 'num' lalu toDouble() agar aman (int/double/string numeric)
+    return MapItem(
+      originalId: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
+      type: 'rawan',
+      title: json['namaLokasi'] ?? 'Lokasi Tanpa Nama',
+      description: json['deskripsi'] ?? '-',
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
-      images: imgs,
-      thumbnail: defaultImage,
+      mediaUrl: fullUrl,
+      isVideo: isVid,
+    );
+  }
+
+  // Factory untuk Laporan
+  factory MapItem.fromLaporan(Map<String, dynamic> json, String baseUrl) {
+    String rawUrl = '';
+    String tipeFile = 'Gambar';
+
+    // Ambil file dari array Dokumentasis
+    if (json['Dokumentasis'] != null && (json['Dokumentasis'] as List).isNotEmpty) {
+      var doc = json['Dokumentasis'][0];
+      rawUrl = doc['fileUrl'] ?? '';
+      tipeFile = doc['tipeFile'] ?? 'Gambar';
+    }
+
+    String fullUrl = rawUrl.startsWith('http') ? rawUrl : (rawUrl.isNotEmpty ? '$baseUrl$rawUrl' : '');
+    bool isVid = _checkIsVideo(rawUrl, tipeFile);
+
+    return MapItem(
+      originalId: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
+      type: 'laporan',
+      title: json['jenisKejadian'] ?? 'Laporan Kejadian',
+      description: json['deskripsi'] ?? '-',
+      latitude: (json['latitude'] as num).toDouble(),
+      longitude: (json['longitude'] as num).toDouble(),
+      mediaUrl: fullUrl,
+      isVideo: isVid,
+      status: json['status'] ?? 'Pending',
     );
   }
 }
@@ -58,7 +97,6 @@ class LokasiRawan {
 // ==================== 2. WIDGET UTAMA ====================
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
-  
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -66,67 +104,47 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   String _authToken = "Memuat...";
-  // State Data
-  List<LokasiRawan> markers = [];
+  
+  List<MapItem> mapItems = [];
   bool loading = true;
   String? error;
   
-  // State UI
   bool isListOpen = true;
-  int? selectedId;
+  String? selectedUniqueId; 
   final MapController mapController = MapController();
 
   @override
   void initState() {
     super.initState();
-    _fetchMarkers();
-    _loadUserData();
-
+    _loadUserData().then((_) => _fetchAllData());
   }
 
-   Future<void> _loadUserData() async {
+  Future<void> _loadUserData() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? authToken = prefs.getString('authToken');
-
-      if (authToken == null) {
-        throw Exception("Pengguna belum login");
-      }
-
       if (mounted) {
         setState(() {
-          _authToken = authToken;  
+          _authToken = authToken ?? ""; 
         });
       }
     } catch (e) {
-      debugPrint("Gagal memuat data pengguna: $e"); 
-      if (mounted) {
-        setState(() {
-          _authToken = "--"; 
-        });
-      }
+      debugPrint("Gagal memuat data pengguna: $e");
     }
   }
 
-  // --- FUNGSI FETCH API ASLI ---
-  Future<void> _fetchMarkers() async {
-    // SETTING URL (Sesuaikan dengan Environment Anda)
+  Future<void> _fetchAllData() async {
     String baseUrl;
-    
     if (kIsWeb) {
       baseUrl = 'http://localhost:5000';
     } else if (Platform.isAndroid) {
-      // Android Emulator IP khusus untuk akses localhost komputer
       baseUrl = 'http://10.0.2.2:5000'; 
     } else {
-      // iOS Simulator atau default
       baseUrl = 'http://localhost:5000';
     }
 
-    final String endpoint = '$baseUrl/api/lokasi-rawan';
-    
-    // Jika pakai token, masukkan di sini
     final String token = _authToken; 
+    final headers = {'Authorization': 'Bearer $token'};
 
     try {
       setState(() {
@@ -134,67 +152,109 @@ class _MapScreenState extends State<MapScreen> {
         error = null;
       });
 
-      debugPrint("Fetching data from: $endpoint");
+      // Request Parallel
+      final results = await Future.wait([
+        http.get(Uri.parse('$baseUrl/api/lokasi-rawan'), headers: headers),
+        http.get(Uri.parse('$baseUrl/api/reports'), headers: headers), 
+      ]);
 
-      final response = await http.get(
-        Uri.parse(endpoint),
-        headers: {'Authorization': 'Bearer $token'}, // Uncomment jika perlu Auth
-      );
+      final responseRawan = results[0];
+      final responseLaporan = results[1];
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        
-        // Debug print untuk memastikan data masuk
-        debugPrint("Data received: ${data.length} items");
+      List<MapItem> loadedItems = [];
 
-        final List<LokasiRawan> mappedData = data
-            .map((json) => LokasiRawan.fromJson(json))
-            .toList();
-
-        if (mounted) {
-          setState(() {
-            markers = mappedData;
-            loading = false;
-          });
-          
-          // Auto center ke data pertama jika ada
-          if (mappedData.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              mapController.move(
-                LatLng(mappedData[0].latitude, mappedData[0].longitude), 
-                13.0
-              );
-            });
-          }
-        }
-      } else {
-        throw Exception('Gagal memuat data. Status: ${response.statusCode}');
+      // Proses Rawan
+      if (responseRawan.statusCode == 200) {
+        final List<dynamic> dataRawan = json.decode(responseRawan.body);
+        loadedItems.addAll(dataRawan.map((json) => MapItem.fromLokasiRawan(json, baseUrl)));
       }
-    } catch (e) {
-      debugPrint("Error fetching: $e");
+
+      // Proses Laporan
+      if (responseLaporan.statusCode == 200) {
+        final dynamic decodedLaporan = json.decode(responseLaporan.body);
+        List<dynamic> dataLaporan = [];
+        if (decodedLaporan is List) {
+          dataLaporan = decodedLaporan;
+        } else if (decodedLaporan is Map && decodedLaporan['data'] != null) {
+          dataLaporan = decodedLaporan['data'];
+        }
+        loadedItems.addAll(dataLaporan.map((json) => MapItem.fromLaporan(json, baseUrl)));
+      }
+
       if (mounted) {
         setState(() {
-          error = "Gagal terhubung ke server.\nPastikan backend jalan di port 5000.\n($e)";
+          mapItems = loadedItems;
+          loading = false;
+        });
+        
+        if (loadedItems.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            mapController.move(
+              LatLng(loadedItems[0].latitude, loadedItems[0].longitude), 
+              13.0
+            );
+          });
+        }
+      }
+
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          error = "Gagal memuat data.\n($e)";
           loading = false;
         });
       }
     }
   }
 
-  void _handleLocationClick(LokasiRawan marker) {
+  void _handleMarkerClick(MapItem item) {
     setState(() {
-      selectedId = marker.id;
+      selectedUniqueId = item.uniqueId;
+      isListOpen = true; 
     });
     mapController.move(
-      LatLng(marker.latitude, marker.longitude), 
+      LatLng(item.latitude, item.longitude), 
       16.0
     );
+  }
+
+  // --- WIDGET HELPER UNTUK THUMBNAIL (VIDEO/GAMBAR) ---
+  Widget _buildMediaThumbnail(String url, bool isVideo, {double size = 60}) {
+    if (url.isEmpty) {
+      return Container(
+        width: size, height: size, color: Colors.grey[300],
+        child: const Icon(Icons.image_not_supported, color: Colors.grey),
+      );
+    }
+
+    if (isVideo) {
+      // Tampilan Placeholder Video (Kotak Hitam + Icon Play)
+      return Container(
+        width: size,
+        height: size,
+        color: Colors.black87,
+        child: Center(
+          child: Icon(Icons.play_circle_fill, color: Colors.white, size: size * 0.5),
+        ),
+      );
+    } else {
+      // Tampilan Gambar Biasa
+      return Image.network(
+        url,
+        width: size, height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (ctx, err, _) => Container(
+          width: size, height: size, color: Colors.grey[300],
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.of(context).size;
-    final initialCenter = const LatLng(-6.565493, 107.827441); // Default center (misal: Subang/Bandung)
+    final initialCenter = const LatLng(-6.9206016, 107.6166656); 
 
     return Scaffold(
       body: Stack(
@@ -204,7 +264,7 @@ class _MapScreenState extends State<MapScreen> {
             mapController: mapController,
             options: MapOptions(
               initialCenter: initialCenter,
-              initialZoom: 13.0,
+              initialZoom: 12.0,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
@@ -212,41 +272,51 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.app',
+                userAgentPackageName: 'com.damkar.app',
               ),
               MarkerLayer(
-                markers: markers.map((item) {
-                  final isSelected = selectedId == item.id;
+                markers: mapItems.map((item) {
+                  final isSelected = selectedUniqueId == item.uniqueId;
+                  final isRawan = item.type == 'rawan';
+
                   return Marker(
                     point: LatLng(item.latitude, item.longitude),
-                    width: 60,
-                    height: 60,
+                    // [PERBAIKAN] Ukuran marker diperbesar agar label teks muat dan tidak overflow
+                    width: 80, 
+                    height: 80, 
                     child: GestureDetector(
-                      onTap: () => _handleLocationClick(item),
+                      onTap: () => _handleMarkerClick(item),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min, // Agar column menyesuaikan isi
                         children: [
-                          // Nama lokasi melayang di atas marker jika dipilih
+                          // Label melayang (Hanya muncul jika dipilih)
                           if (isSelected)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(4),
-                                boxShadow: const [BoxShadow(blurRadius: 2)],
-                              ),
-                              child: Text(
-                                item.namaLokasi,
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            Flexible(
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: const [BoxShadow(blurRadius: 2)],
+                                ),
+                                child: Text(
+                                  item.title,
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
+                          // Icon Marker
                           Icon(
-                            Icons.location_on,
-                            color: isSelected ? Colors.red : Colors.red.withOpacity(0.7),
-                            size: isSelected ? 40 : 35,
+                            isRawan ? Icons.location_on : Icons.report_problem, 
+                            color: isRawan 
+                                ? (isSelected ? Colors.red : Colors.red.withOpacity(0.8)) 
+                                : (isSelected ? Colors.orange[900] : Colors.orange), 
+                            size: isSelected ? 45 : 35,
                           ),
                         ],
                       ),
@@ -259,36 +329,20 @@ class _MapScreenState extends State<MapScreen> {
 
           // ================= LAYER 2: LOADING / ERROR =================
           if (loading)
-             const Center(
-               child: Card(
-                 child: Padding(
-                   padding: EdgeInsets.all(16.0),
-                   child: CircularProgressIndicator(),
-                 ),
-               )
-             )
+             const Center(child: CircularProgressIndicator())
           else if (error != null)
             Align(
               alignment: Alignment.center,
               child: Container(
                 margin: const EdgeInsets.all(20),
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [BoxShadow(blurRadius: 10, color: Colors.black26)],
-                ),
+                color: Colors.white,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 40),
-                    const SizedBox(height: 10),
-                    Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: _fetchMarkers, 
-                      child: const Text("Coba Lagi")
-                    )
+                    const Icon(Icons.error, color: Colors.red),
+                    Text(error!),
+                    ElevatedButton(onPressed: _fetchAllData, child: const Text("Retry"))
                   ],
                 ),
               ),
@@ -305,7 +359,7 @@ class _MapScreenState extends State<MapScreen> {
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.black,
                   icon: const Icon(Icons.format_list_bulleted),
-                  label: const Text("Lihat Daftar"),
+                  label: const Text("Lihat Data"),
                 ),
               ),
             ),
@@ -330,7 +384,7 @@ class _MapScreenState extends State<MapScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "Lokasi Rawan (${markers.length})",
+                          "Data Peta (${mapItems.length})",
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         IconButton(
@@ -346,18 +400,19 @@ class _MapScreenState extends State<MapScreen> {
                   
                   // LIST
                   Expanded(
-                    child: markers.isEmpty
-                    ? const Center(child: Text("Tidak ada data lokasi."))
+                    child: mapItems.isEmpty
+                    ? const Center(child: Text("Tidak ada data."))
                     : ListView.separated(
                         padding: const EdgeInsets.all(12),
-                        itemCount: markers.length,
+                        itemCount: mapItems.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
-                          final item = markers[index];
-                          final isSelected = selectedId == item.id;
+                          final item = mapItems[index];
+                          final isSelected = selectedUniqueId == item.uniqueId;
+                          final isRawan = item.type == 'rawan';
 
                           return GestureDetector(
-                            onTap: () => _handleLocationClick(item),
+                            onTap: () => _handleMarkerClick(item),
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
@@ -370,18 +425,10 @@ class _MapScreenState extends State<MapScreen> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Image
+                                  // MEDIA THUMBNAIL (Video / Gambar)
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(6),
-                                    child: Image.network(
-                                      item.thumbnail,
-                                      width: 60, height: 60,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (ctx, err, _) => Container(
-                                        width: 60, height: 60, color: Colors.grey[300],
-                                        child: const Icon(Icons.broken_image),
-                                      ),
-                                    ),
+                                    child: _buildMediaThumbnail(item.mediaUrl, item.isVideo),
                                   ),
                                   const SizedBox(width: 10),
                                   // Info
@@ -389,16 +436,48 @@ class _MapScreenState extends State<MapScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          item.namaLokasi,
-                                          style: const TextStyle(fontWeight: FontWeight.bold),
-                                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                                        Row(
+                                          children: [
+                                            // Badge Tipe
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: isRawan ? Colors.red[100] : Colors.orange[100],
+                                                borderRadius: BorderRadius.circular(4)
+                                              ),
+                                              child: Text(
+                                                isRawan ? "Rawan" : "Laporan",
+                                                style: TextStyle(
+                                                  fontSize: 10, 
+                                                  color: isRawan ? Colors.red[800] : Colors.orange[800],
+                                                  fontWeight: FontWeight.bold
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                item.title,
+                                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
                                         ),
+                                        const SizedBox(height: 4),
                                         Text(
-                                          item.deskripsi,
+                                          item.description,
                                           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                                           maxLines: 2, overflow: TextOverflow.ellipsis,
                                         ),
+                                        if (!isRawan) 
+                                           Padding(
+                                             padding: const EdgeInsets.only(top: 4),
+                                             child: Text(
+                                               "Status: ${item.status}",
+                                               style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+                                             ),
+                                           ),
                                       ],
                                     ),
                                   )

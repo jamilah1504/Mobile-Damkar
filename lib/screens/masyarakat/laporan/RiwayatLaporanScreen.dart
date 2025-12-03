@@ -169,9 +169,6 @@ class _RiwayatLaporanState extends State<RiwayatLaporan> {
             .map((json) => Laporan.fromJson(json))
             .where((l) => l.pelaporId == _userId)
             .toList();
-
-        // Urutkan terbaru
-        userReports.sort((a, b) => b.timestampDibuat.compareTo(a.timestampDibuat));
         
         debugPrint("Jumlah Laporan Ditemukan: ${userReports.length}");
 

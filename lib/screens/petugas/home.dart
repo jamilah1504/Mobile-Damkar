@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../petugas/daftarTugas.dart';
 import 'detailTugas.dart';
+import 'Notifikasi.dart';
+import 'info.dart';
 
 // ---------------------------------------------------
 // MODEL DATA
@@ -39,8 +41,12 @@ class PanggilanLaporan {
   });
 
   factory PanggilanLaporan.fromJson(Map<String, dynamic> json) {
-    final insiden = json['Insiden'] as Map<String, dynamic>?;
+    // PERBAIKAN DI SINI: Ubah 'Insiden' menjadi 'InsidenTerkait'
+    final insiden = json['InsidenTerkait'] as Map<String, dynamic>?;
+
     String? alamat = json['alamatKejadian'];
+    
+    // Safety handling untuk latitude/longitude (berjaga jika null atau string)
     double? lat = json['latitude'] != null ? (json['latitude'] as num).toDouble() : null;
     double? long = json['longitude'] != null ? (json['longitude'] as num).toDouble() : null;
 
@@ -51,7 +57,10 @@ class PanggilanLaporan {
     return PanggilanLaporan(
       id: json['id'] ?? 0,
       insidenId: json['insidenId'] ?? 0,
+      
+      // Karena 'insiden' sudah diperbaiki di atas, judulInsiden sekarang akan terbaca benar
       judulInsiden: insiden?['judulInsiden'] ?? 'Laporan Masuk',
+      
       jenisKejadian: json['jenisKejadian'] ?? 'Kejadian Tidak Diketahui',
       alamatKejadian: alamat ?? 'Lokasi Tidak Diketahui',
       deskripsi: json['deskripsi'] ?? '-',
@@ -59,7 +68,11 @@ class PanggilanLaporan {
       timestampDibuat: json['timestampDibuat'] != null
           ? DateTime.parse(json['timestampDibuat'])
           : DateTime.now(),
+      
+      // Logika ini SUDAH BENAR (karena JSON tidak punya 'namaPelapor' di root, 
+      // dia akan ambil dari object 'Pelapor')
       namaPelapor: json['namaPelapor'] ?? (json['Pelapor']?['name']) ?? 'Warga',
+      
       latitude: lat,
       longitude: long,
     );
@@ -125,8 +138,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             .map((json) => PanggilanLaporan.fromJson(json))
             .toList();
 
-        // Urutkan dari terbaru
-        semuaLaporan.sort((a, b) => b.timestampDibuat.compareTo(a.timestampDibuat));
 
         setState(() {
           // 1. Ambil Laporan 'Menunggu Verifikasi' (Group by Insiden)
@@ -181,9 +192,15 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
           style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
+          // --- PERUBAHAN 1: NAVIGASI NOTIFIKASI ---
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.white),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const NotifikasiPage()), 
+              );
+            },
           ),
         ],
       ),
@@ -279,6 +296,15 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
               context,
               MaterialPageRoute(
                 builder: (context) => const DaftarTugas(),
+              ),
+            );
+          } else if (index == 2) {
+            // Navigasi ke Halaman Info
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const HalamanInfo(), 
+                // Ganti HalamanInfo() dengan nama class halaman Info Anda
               ),
             );
           }

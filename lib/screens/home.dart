@@ -142,13 +142,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // 5. Section Materi Edukasi (Slider)
-              _buildEdukasiSliderSection(
-                context,
-                cardColor,
-                textColor,
-                subtleTextColor,
-              ),
+              // // 5. Section Materi Edukasi (Slider)
+              // _buildEdukasiSliderSection(
+              //   context,
+              //   cardColor,
+              //   textColor,
+              //   subtleTextColor,
+              // ),
               const SizedBox(height: 24),
             ],
           ),
@@ -322,191 +322,191 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEdukasiSliderSection(
-    BuildContext context,
-    Color cardColor,
-    Color textColor,
-    Color subtleTextColor,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Judul Header
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Materi Edukasi',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const EdukasiListScreen(),
-                    ),
-                  );
-                },
-                child: const Text("Lihat Semua"),
-              )
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
+  // Widget _buildEdukasiSliderSection(
+  //   BuildContext context,
+  //   Color cardColor,
+  //   Color textColor,
+  //   Color subtleTextColor,
+  // ) {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       // Judul Header
+  //       Padding(
+  //         padding: const EdgeInsets.symmetric(horizontal: 16.0),
+  //         child: Row(
+  //           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //           children: [
+  //             const Text(
+  //               'Materi Edukasi',
+  //               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+  //             ),
+  //             TextButton(
+  //               onPressed: () {
+  //                 Navigator.push(
+  //                   context,
+  //                   MaterialPageRoute(
+  //                     builder: (context) => const EdukasiListScreen(),
+  //                   ),
+  //                 );
+  //               },
+  //               child: const Text("Lihat Semua"),
+  //             )
+  //           ],
+  //         ),
+  //       ),
+  //       const SizedBox(height: 8),
 
-        // FutureBuilder untuk Slider
-        // FutureBuilder untuk Slider
-        FutureBuilder<List<Edukasi>>(
-          future: futureEdukasi,
-          builder: (context, snapshot) {
+  //       // FutureBuilder untuk Slider
+  //       // FutureBuilder untuk Slider
+  //       FutureBuilder<List<Edukasi>>(
+  //         future: futureEdukasi,
+  //         builder: (context, snapshot) {
             
-            // --- PERBAIKAN DI SINI ---
-            // Jangan pakai '!', tapi pakai '?? []'.
-            // Artinya: Jika data ada, pakai datanya. Jika data null (loading/error), pakai list kosong [].
-            final allEdukasi = snapshot.data ?? []; 
+  //           // --- PERBAIKAN DI SINI ---
+  //           // Jangan pakai '!', tapi pakai '?? []'.
+  //           // Artinya: Jika data ada, pakai datanya. Jika data null (loading/error), pakai list kosong [].
+  //           final allEdukasi = snapshot.data ?? []; 
 
-            // Jika data masih kosong (sedang loading atau gagal), tampilkan kotak kosong atau loading kecil
-            // agar layout tidak berantakan.
-            if (allEdukasi.isEmpty) {
-              return const SizedBox(
-                height: 140, 
-                child: Center(child: CircularProgressIndicator())
-              );
-            }
+  //           // Jika data masih kosong (sedang loading atau gagal), tampilkan kotak kosong atau loading kecil
+  //           // agar layout tidak berantakan.
+  //           if (allEdukasi.isEmpty) {
+  //             return const SizedBox(
+  //               height: 140, 
+  //               child: Center(child: CircularProgressIndicator())
+  //             );
+  //           }
 
-            final limitedEdukasi = allEdukasi.take(4).toList();
+  //           final limitedEdukasi = allEdukasi.take(4).toList();
 
-            return SizedBox(
-              height: 140,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: limitedEdukasi.length,
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                itemBuilder: (context, index) {
-                  final edukasi = limitedEdukasi[index];
-                  return Container(
-                    width: 300,
-                    margin: const EdgeInsets.only(right: 12.0),
-                    child: _buildEdukasiCard(
-                      edukasi,
-                      cardColor,
-                      textColor,
-                      subtleTextColor,
-                      context,
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
+  //           return SizedBox(
+  //             height: 140,
+  //             child: ListView.builder(
+  //               scrollDirection: Axis.horizontal,
+  //               itemCount: limitedEdukasi.length,
+  //               padding: const EdgeInsets.symmetric(horizontal: 16.0),
+  //               itemBuilder: (context, index) {
+  //                 final edukasi = limitedEdukasi[index];
+  //                 return Container(
+  //                   width: 300,
+  //                   margin: const EdgeInsets.only(right: 12.0),
+  //                   child: _buildEdukasiCard(
+  //                     edukasi,
+  //                     cardColor,
+  //                     textColor,
+  //                     subtleTextColor,
+  //                     context,
+  //                   ),
+  //                 );
+  //               },
+  //             ),
+  //           );
+  //         },
+  //       ),
+  //     ],
+  //   );
+  // }
 
-  Widget _buildEdukasiCard(
-    Edukasi edukasi,
-    Color cardColor,
-    Color textColor,
-    Color subtleTextColor,
-    BuildContext context,
-  ) {
-    final String previewText = edukasi.isiKonten.length > 60
-        ? '${edukasi.isiKonten.substring(0, 60)}...'
-        : edukasi.isiKonten;
+  // Widget _buildEdukasiCard(
+  //   Edukasi edukasi,
+  //   Color cardColor,
+  //   Color textColor,
+  //   Color subtleTextColor,
+  //   BuildContext context,
+  // ) {
+  //   final String previewText = edukasi.isiKonten.length > 60
+  //       ? '${edukasi.isiKonten.substring(0, 60)}...'
+  //       : edukasi.isiKonten;
 
-    final String formattedDate =
-        '${edukasi.timestampDibuat.day}/${edukasi.timestampDibuat.month}/${edukasi.timestampDibuat.year}';
+  //   final String formattedDate =
+  //       '${edukasi.timestampDibuat.day}/${edukasi.timestampDibuat.month}/${edukasi.timestampDibuat.year}';
 
-    final bool isPdf = edukasi.fileUrl != null &&
-        edukasi.fileUrl!.toLowerCase().endsWith('.pdf');
+  //   final bool isPdf = edukasi.fileUrl != null &&
+  //       edukasi.fileUrl!.toLowerCase().endsWith('.pdf');
 
-    return Card(
-      color: cardColor,
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DetailEdukasiScreen(edukasi: edukasi),
-            ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      edukasi.judul,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      previewText,
-                      style: TextStyle(fontSize: 11, color: subtleTextColor),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8.0),
-                child: isPdf
-                    ? Container(
-                        width: 80,
-                        height: 80,
-                        color: Colors.red.shade50,
-                        child: const Icon(
-                          Icons.picture_as_pdf,
-                          color: Colors.red,
-                          size: 30,
-                        ),
-                      )
-                    : Image.network(
-                        edukasi.fileUrl ??
-                            'https://placehold.co/100x80/FFA07A/FFFFFF?text=Edukasi',
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) => Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey.shade300,
-                          child: const Icon(Icons.image_not_supported, size: 30),
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  //   return Card(
+  //     color: cardColor,
+  //     elevation: 2,
+  //     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  //     child: InkWell(
+  //       borderRadius: BorderRadius.circular(12),
+  //       onTap: () {
+  //         Navigator.push(
+  //           context,
+  //           MaterialPageRoute(
+  //             builder: (context) => DetailEdukasiScreen(edukasi: edukasi),
+  //           ),
+  //         );
+  //       },
+  //       child: Padding(
+  //         padding: const EdgeInsets.all(12.0),
+  //         child: Row(
+  //           children: [
+  //             Expanded(
+  //               child: Column(
+  //                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                 mainAxisAlignment: MainAxisAlignment.center,
+  //                 children: [
+  //                   Text(
+  //                     edukasi.judul,
+  //                     style: TextStyle(
+  //                       fontSize: 14,
+  //                       fontWeight: FontWeight.bold,
+  //                       color: textColor,
+  //                     ),
+  //                     maxLines: 2,
+  //                     overflow: TextOverflow.ellipsis,
+  //                   ),
+  //                   const SizedBox(height: 4),
+  //                   Text(
+  //                     previewText,
+  //                     style: TextStyle(fontSize: 11, color: subtleTextColor),
+  //                     maxLines: 2,
+  //                     overflow: TextOverflow.ellipsis,
+  //                   ),
+  //                   const SizedBox(height: 4),
+  //                   Text(
+  //                     formattedDate,
+  //                     style: TextStyle(
+  //                       fontSize: 10,
+  //                       color: Colors.grey.shade600,
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //             ),
+  //             const SizedBox(width: 8),
+  //             ClipRRect(
+  //               borderRadius: BorderRadius.circular(8.0),
+  //               child: isPdf
+  //                   ? Container(
+  //                       width: 80,
+  //                       height: 80,
+  //                       color: Colors.red.shade50,
+  //                       child: const Icon(
+  //                         Icons.picture_as_pdf,
+  //                         color: Colors.red,
+  //                         size: 30,
+  //                       ),
+  //                     )
+  //                   : Image.network(
+  //                       edukasi.fileUrl ??
+  //                           'https://placehold.co/100x80/FFA07A/FFFFFF?text=Edukasi',
+  //                       width: 80,
+  //                       height: 80,
+  //                       fit: BoxFit.cover,
+  //                       errorBuilder: (c, e, s) => Container(
+  //                         width: 80,
+  //                         height: 80,
+  //                         color: Colors.grey.shade300,
+  //                         child: const Icon(Icons.image_not_supported, size: 30),
+  //                       ),
+  //                     ),
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
 }
