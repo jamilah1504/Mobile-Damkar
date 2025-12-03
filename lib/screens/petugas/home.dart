@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'dart:async'; 
-import 'dart:convert'; 
-import 'package:http/http.dart' as http; 
-import 'package:intl/intl.dart'; 
-import 'package:intl/date_symbol_data_local.dart'; 
-import 'package:shared_preferences/shared_preferences.dart'; 
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../petugas/daftarTugas.dart';
 import 'detailTugas.dart';
 
@@ -13,6 +13,7 @@ import 'detailTugas.dart';
 // ---------------------------------------------------
 class PanggilanLaporan {
   final int id;
+  final int insidenId;
   final String judulInsiden;
   final String jenisKejadian;
   final String alamatKejadian;
@@ -25,6 +26,7 @@ class PanggilanLaporan {
 
   PanggilanLaporan({
     required this.id,
+    required this.insidenId,
     required this.judulInsiden,
     required this.jenisKejadian,
     required this.alamatKejadian,
@@ -48,6 +50,7 @@ class PanggilanLaporan {
 
     return PanggilanLaporan(
       id: json['id'] ?? 0,
+      insidenId: json['insidenId'] ?? 0,
       judulInsiden: insiden?['judulInsiden'] ?? 'Laporan Masuk',
       jenisKejadian: json['jenisKejadian'] ?? 'Kejadian Tidak Diketahui',
       alamatKejadian: alamat ?? 'Lokasi Tidak Diketahui',
@@ -74,18 +77,13 @@ class PetugasHomeScreen extends StatefulWidget {
 }
 
 class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
-  int _selectedFilterIndex = 0;
-  Timer? _responTimer;
-  int _sisaWaktuDetik = 0;
-  bool _timerBerjalan = false;
-
   late Future<void> _initData;
-  PanggilanLaporan? _panggilanDarurat;
-  PanggilanLaporan? _tugasBerjalan;
-  List<PanggilanLaporan> _laporanRiwayat = [];
-  List<PanggilanLaporan> _laporanSelesai = [];
+  
+  // List data untuk dashboard
+  List<PanggilanLaporan> _listPanggilanDarurat = [];
+  List<PanggilanLaporan> _listTugasBerjalan = [];
 
-  // Ganti dengan IP Anda (localhost untuk Web/Windows, 10.0.2.2 untuk Emulator)
+  // Ganti dengan IP Anda
   final String _baseUrl = 'http://localhost:5000';
 
   @override
@@ -100,16 +98,9 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _responTimer?.cancel();
-    super.dispose();
-  }
-
-  // --- HELPER: AMBIL TOKEN ---
+  // Helper Token
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    // Prioritaskan authToken, fallback ke token
     return prefs.getString('authToken') ?? prefs.getString('token'); 
   }
 
@@ -134,36 +125,21 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             .map((json) => PanggilanLaporan.fromJson(json))
             .toList();
 
+        // Urutkan dari terbaru
+        semuaLaporan.sort((a, b) => b.timestampDibuat.compareTo(a.timestampDibuat));
+
         setState(() {
-          try {
-            _panggilanDarurat = semuaLaporan.firstWhere(
-              (p) => p.status == 'Menunggu Verifikasi',
-            );
-          } catch (e) {
-            _panggilanDarurat = null;
-          }
-
-          try {
-            _tugasBerjalan = semuaLaporan.firstWhere(
-              (p) => p.status == 'Diproses' || p.status == 'Penanganan', // Tambahkan Penanganan
-            );
-          } catch (e) {
-            _tugasBerjalan = null;
-          }
-
-          _laporanRiwayat = semuaLaporan
-              .where((p) => p.status == 'Ditolak')
+          // 1. Ambil Laporan 'Menunggu Verifikasi' (Group by Insiden)
+          var rawDarurat = semuaLaporan
+              .where((p) => p.status == 'Menunggu Verifikasi')
               .toList();
-          _laporanSelesai = semuaLaporan
-              .where((p) => p.status == 'Selesai')
-              .toList();
+          _listPanggilanDarurat = _filterLatestPerIncident(rawDarurat);
 
-          if (_tugasBerjalan != null && !_timerBerjalan) {
-            _startResponTimer();
-          } else if (_tugasBerjalan == null) {
-            _responTimer?.cancel();
-            _timerBerjalan = false;
-          }
+          // 2. Ambil Tugas Berjalan (Group by Insiden)
+          var rawBerjalan = semuaLaporan
+              .where((p) => p.status == 'Diproses' || p.status == 'Penanganan')
+              .toList();
+          _listTugasBerjalan = _filterLatestPerIncident(rawBerjalan);
         });
       }
     } catch (e) {
@@ -171,29 +147,15 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
     }
   }
 
-  // ---------------------------------------------------
-  // LOGIKA TIMER
-  // ---------------------------------------------------
-  void _startResponTimer() {
-    _responTimer?.cancel();
-    setState(() {
-      _sisaWaktuDetik = 0; 
-      _timerBerjalan = true;
-    });
-
-    _responTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _sisaWaktuDetik++;
-        });
+  // Helper: Filter agar 1 insiden hanya muncul 1 kartu (paling baru)
+  List<PanggilanLaporan> _filterLatestPerIncident(List<PanggilanLaporan> list) {
+    final Map<int, PanggilanLaporan> uniqueMap = {};
+    for (var laporan in list) {
+      if (!uniqueMap.containsKey(laporan.insidenId)) {
+        uniqueMap[laporan.insidenId] = laporan;
       }
-    });
-  }
-
-  String _formatSisaWaktu(int totalDetik) {
-    int menit = totalDetik ~/ 60;
-    int detik = totalDetik % 60;
-    return '${menit.toString().padLeft(2, '0')}:${detik.toString().padLeft(2, '0')}';
+    }
+    return uniqueMap.values.toList();
   }
 
   // ---------------------------------------------------
@@ -216,11 +178,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
         ),
         title: const Text(
           'Selamat Datang, Petugas!',
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -242,7 +200,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Banner
+                  // Banner Image
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12.0),
                     child: Image.asset(
@@ -258,26 +216,48 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 2. Dashboard & Filter
+                  // Dashboard Title
                   const Text(
-                    'Dashboard',
+                    'Dashboard Aktif',
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 12),
-                  _buildFilterButtons(secondaryColor),
-                  const SizedBox(height: 20),
-
-                  // 3. Konten Dinamis
-                  _buildFilteredContent(
-                    primaryColor,
-                    secondaryColor,
-                    accentColor,
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Pantau tugas yang sedang berlangsung di sini.',
+                    style: TextStyle(color: Colors.grey),
                   ),
-
                   const SizedBox(height: 20),
 
-                  // 4. Timer Card
-                  if (_timerBerjalan) _buildSisaWaktuCard(accentColor),
+                  // KONTEN UTAMA
+                  if (_listPanggilanDarurat.isEmpty && _listTugasBerjalan.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40.0),
+                        child: Column(
+                          children: [
+                            Icon(Icons.check_circle_outline, size: 60, color: Colors.green),
+                            SizedBox(height: 16),
+                            Text("Tidak ada panggilan darurat saat ini.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Column(
+                      children: [
+                        // LIST 1: Panggilan Darurat (Merah)
+                        ..._listPanggilanDarurat.map((laporan) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: _buildPanggilanDaruratCard(laporan, primaryColor, secondaryColor, accentColor),
+                        )),
+
+                        // LIST 2: Tugas Berjalan (Biru/Hijau)
+                        ..._listTugasBerjalan.map((laporan) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: _buildTugasBerjalanCard(laporan, accentColor),
+                        )),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -288,10 +268,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.info_outline),
-            label: 'Info',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.info_outline), label: 'Info'),
         ],
         currentIndex: 0,
         selectedItemColor: primaryColor,
@@ -314,74 +291,6 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
   // WIDGETS
   // ---------------------------------------------------
 
-  Widget _buildFilteredContent(Color primary, Color secondary, Color accent) {
-    switch (_selectedFilterIndex) {
-      case 0: // AKTIF
-        if (_panggilanDarurat != null) {
-          return _buildPanggilanDaruratCard(
-            _panggilanDarurat!,
-            primary,
-            secondary,
-            accent,
-          );
-        }
-        if (_tugasBerjalan != null) {
-          return _buildTugasBerjalanCard(_tugasBerjalan!, accent);
-        }
-        return const Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40.0),
-            child: Text(
-              "Tidak ada panggilan darurat saat ini.",
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-        );
-      case 1: // RIWAYAT (Ditolak)
-        return _buildListFromData(
-          _laporanRiwayat,
-          "Tidak ada riwayat laporan (Ditolak).",
-        );
-      case 2: // SELESAI
-        return _buildListFromData(
-          _laporanSelesai,
-          "Belum ada tugas yang selesai.",
-        );
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildFilterButtons(Color activeColor) {
-    final List<String> filters = ['Aktif', 'Riwayat', 'Selesai'];
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(filters.length, (index) {
-        bool isActive = _selectedFilterIndex == index;
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _selectedFilterIndex = index;
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isActive ? activeColor : Colors.white,
-                foregroundColor: isActive ? Colors.white : Colors.black54,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              child: Text(filters[index]),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
   Widget _buildPanggilanDaruratCard(
     PanggilanLaporan panggilan,
     Color primaryColor,
@@ -399,6 +308,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -409,35 +319,33 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                     Text('PANGGILAN DARURAT!!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    // [IMPLEMENTASI AUTO REFRESH DI SINI]
+                InkWell(
+                  onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => DetailTugasScreen(
                           laporan: panggilan,
                           onTerimaTugas: () {
-                            setState(() {
-                              _initData = _fetchPanggilan();
-                              _startResponTimer();
-                            });
+                            setState(() { _initData = _fetchPanggilan(); });
                           },
                         ),
                       ),
                     ).then((_) {
-                      // REFRESH SAAT KEMBALI DARI DETAIL
-                      setState(() {
-                        _initData = _fetchPanggilan();
-                      });
+                      setState(() { _initData = _fetchPanggilan(); });
                     });
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: primaryColor),
-                  child: const Text('Detail'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                    child: Text('Detail', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
+            
+            // Konten
             Text('${panggilan.jenisKejadian.toUpperCase()} - ${panggilan.namaPelapor}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 4),
             Row(children: [const Icon(Icons.location_on, color: Colors.white, size: 16), const SizedBox(width: 4), Expanded(child: Text(panggilan.alamatKejadian, style: const TextStyle(color: Colors.white, fontSize: 15), maxLines: 2))]),
@@ -445,7 +353,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             Text(tgl, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
             const SizedBox(height: 16),
             
-            // TOMBOL TERIMA & MULAI JALAN (LANGSUNG KE DETAIL + REFRESH)
+            // Tombol Terima
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -454,21 +362,15 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                     builder: (context) => DetailTugasScreen(
                       laporan: panggilan,
                       onTerimaTugas: () {
-                        setState(() {
-                          _initData = _fetchPanggilan();
-                          _startResponTimer();
-                        });
+                        setState(() { _initData = _fetchPanggilan(); });
                       },
                     ),
                   ),
                 ).then((_) {
-                   // [IMPLEMENTASI AUTO REFRESH]
-                   setState(() {
-                     _initData = _fetchPanggilan();
-                   });
+                   setState(() { _initData = _fetchPanggilan(); });
                 });
               },
-              style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
+              style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               child: const Text('TERIMA & MULAI JALAN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
           ],
@@ -497,7 +399,7 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
             Text("Diterima: $tgl", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
             const SizedBox(height: 16),
             
-            // TOMBOL LIHAT DETAIL (AUTO REFRESH)
+            // Tombol Update
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -509,47 +411,15 @@ class _PetugasHomeScreenState extends State<PetugasHomeScreen> {
                     ),
                   ),
                 ).then((_) {
-                   // [IMPLEMENTASI AUTO REFRESH]
-                   setState(() {
-                     _initData = _fetchPanggilan();
-                   });
+                   setState(() { _initData = _fetchPanggilan(); });
                 });
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               child: const Text('LIHAT DETAIL / UPDATE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildSisaWaktuCard(Color accentColor) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(children: [Icon(Icons.timer_outlined, color: accentColor, size: 30), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Waktu Respon Berjalan', style: TextStyle(color: Colors.black54)), Text(_formatSisaWaktu(_sisaWaktuDetik), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: accentColor))])]),
-      ),
-    );
-  }
-
-  Widget _buildListFromData(List<PanggilanLaporan> list, String pesanKosong) {
-    if (list.isEmpty) {
-      return Center(child: Padding(padding: const EdgeInsets.symmetric(vertical: 40.0), child: Text(pesanKosong, style: const TextStyle(color: Colors.grey))));
-    }
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: list.length,
-      itemBuilder: (context, index) {
-        final laporan = list[index];
-        final String tgl = DateFormat('dd MMM yyyy', 'id_ID').format(laporan.timestampDibuat);
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(title: Text(laporan.jenisKejadian), subtitle: Text(laporan.alamatKejadian), trailing: Text(tgl)),
-        );
-      },
     );
   }
 }
