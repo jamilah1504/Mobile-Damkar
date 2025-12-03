@@ -1,21 +1,25 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart'; 
+import 'package:flutter/foundation.dart'; // Untuk debugPrint
+
+// --- MODEL IMPORTS (GABUNGAN) ---
 import '../models/edukasi.dart';
 import '../models/laporan.dart';
 import '../models/laporan_lapangan.dart';
+import '../models/petugas/riwayat_model.dart'; // Penting: Import ini dikembalikan dari file 'sebelum'
 
 class ApiService {
-  late Dio _dio; 
+  late Dio _dio;
 
-  // Sesuaikan URL ini dengan IP server/laptop Anda jika menggunakan Emulator/HP Fisik
-  // final String _baseUrl = 'http://localhost:5000/api';
-  final String _baseUrl = 'http://192.168.1.7:5000/api'; // Contoh IP LAN
+  // Menggunakan konfigurasi IP dari file 'sesudah' (biasanya untuk tes di HP Fisik/LAN)
+  // Jika ingin balik ke emulator, ubah ke 'http://10.0.2.2:5000/api' atau 'http://localhost:5000/api'
+  // final String _baseUrl = 'http://192.168.1.7:5000/api'; 
+  final String _baseUrl = 'http://localhost:5000/api'; 
 
   ApiService() {
     final BaseOptions options = BaseOptions(
       baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 10), // Naikkan timeout sedikit
+      connectTimeout: const Duration(seconds: 10), // Timeout lebih panjang (dari file sesudah)
       receiveTimeout: const Duration(seconds: 10),
       headers: {
         'Content-Type': 'application/json',
@@ -70,11 +74,14 @@ class ApiService {
     );
   }
 
-  // === AUTH ===
+  // ===========================================================================
+  // === AUTHENTICATION ===
+  // ===========================================================================
+
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await _dio.post(
-        '/auth/login', // Pastikan route backend benar (/users/login atau /auth/login)
+        '/auth/login', 
         data: {'email': email, 'password': password},
       );
       return response.data;
@@ -117,7 +124,10 @@ class ApiService {
     }
   }
 
+  // ===========================================================================
   // === USER & PROFILE ===
+  // ===========================================================================
+
   Future<Map<String, dynamic>> getMyProfile() async {
     try {
       final response = await _dio.get('/users/profile'); 
@@ -133,8 +143,10 @@ class ApiService {
     }
   }
 
-  // === NOTIFIKASI (UPDATE FCM TOKEN) ===
-  // Fungsi baru ditambahkan di sini
+  // ===========================================================================
+  // === NOTIFIKASI (UPDATE FCM TOKEN) - DARI FILE SESUDAH ===
+  // ===========================================================================
+
   Future<void> updateFcmToken(String fcmToken) async {
     try {
       // Kita tidak perlu ambil token Auth manual, Interceptor _dio akan menambahkannya
@@ -152,7 +164,10 @@ class ApiService {
     }
   }
 
+  // ===========================================================================
   // === LAPORAN ===
+  // ===========================================================================
+
   Future<Map<String, dynamic>> createLaporan(String isiLaporan) async {
     try {
       final response = await _dio.post(
@@ -173,7 +188,7 @@ class ApiService {
 
   Future<List<Laporan>> getRiwayatLaporan(int userId) async {
     try {
-      final response = await _dio.get('/reports'); // Sesuaikan endpoint backend
+      final response = await _dio.get('/reports'); 
       debugPrint('Raw Response Reports: ${response.data}');
 
       if (response.data is! Map<String, dynamic>) {
@@ -199,7 +214,10 @@ class ApiService {
     }
   }
 
+  // ===========================================================================
   // === EDUKASI ===
+  // ===========================================================================
+
   Future<List<Edukasi>> getEdukasi() async {
     try {
       final response = await _dio.get('/edukasi');
@@ -213,7 +231,7 @@ class ApiService {
               .map((item) => Edukasi.fromJson(item as Map<String, dynamic>))
               .toList();
         } else {
-          return [];
+          return []; // Mengembalikan list kosong agar UI tidak crash (versi aman)
         }
       } else {
         throw Exception('Respons bukan JSON Map.');
@@ -229,4 +247,37 @@ class ApiService {
       throw Exception('Gagal memproses data: $e');
     }
   }
+
+  // ===========================================================================
+  // === TUGAS PETUGAS - DIKEMBALIKAN DARI FILE SEBELUM ===
+  // ===========================================================================
+  
+  Future<List<RiwayatTugas>> getRiwayatTugas() async {
+    try {
+      // Panggil endpoint backend (Token otomatis ditambahkan oleh Interceptor)
+      final response = await _dio.get('/tugas/riwayat');
+
+      debugPrint('Riwayat Response: ${response.data}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = response.data;
+        
+        // Ambil data dari key 'data' (sesuai format JSON backend)
+        final List<dynamic> data = jsonResponse['data'];
+        
+        // Ubah JSON menjadi List Object RiwayatTugas
+        return data.map((item) => RiwayatTugas.fromJson(item)).toList();
+      } else {
+        throw Exception('Gagal memuat riwayat: ${response.statusMessage}');
+      }
+    } on DioException catch (e) {
+      debugPrint('Dio Error Riwayat: ${e.response?.data}');
+      // Ambil pesan error dari backend jika ada
+      String pesan = e.response?.data['message'] ?? 'Gagal mengambil data riwayat';
+      throw Exception(pesan);
+    } catch (e) {
+      throw Exception('Terjadi kesalahan: $e');
+    }
+  }
+
 }

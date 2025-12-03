@@ -10,10 +10,10 @@ class Laporan {
   final int pelaporId;
   final List<Dokumentasi> dokumentasi;
   
-  // --- FIELD TAMBAHAN UNTUK DETAIL ---
-  final Map<String, dynamic>? pelapor; // Menyimpan data: name, email
-  final Map<String, dynamic>? insiden; // Menyimpan data: tugas -> laporanLapangan
-  final Map<String, dynamic>? insidenTerkait; // Menyimpan status insiden
+  // --- FIELD TAMBAHAN ---
+  final Map<String, dynamic>? pelapor; 
+  final Map<String, dynamic>? insiden; // Data Laporan Lapangan ada di sini
+  final Map<String, dynamic>? insidenTerkait; // Data Status Insiden ada di sini
 
   Laporan({
     required this.id,
@@ -32,6 +32,11 @@ class Laporan {
   });
 
   factory Laporan.fromJson(Map<String, dynamic> json) {
+    // LOGIKA PENYELAMAT:
+    // Kita ambil data insiden dari berbagai kemungkinan kunci (key)
+    // Backend kadang kirim 'insiden', 'Insiden', atau 'InsidenTerkait'
+    final rawInsiden = json['insiden'] ?? json['InsidenTerkait'] ?? json['Insiden'];
+
     return Laporan(
       id: json['id'] ?? 0,
       jenisKejadian: json['jenisKejadian'] ?? 'Tidak Diketahui',
@@ -42,14 +47,21 @@ class Laporan {
       status: json['status'] ?? 'Menunggu',
       timestampDibuat: json['timestampDibuat'] ?? DateTime.now().toIso8601String(),
       pelaporId: json['pelaporId'] ?? 0,
+      
+      // Mapping Dokumentasi (Foto/Video)
       dokumentasi: (json['Dokumentasis'] as List?)
               ?.map((i) => Dokumentasi.fromJson(i))
               .toList() ?? [],
       
-      // Mapping Data Tambahan
-      pelapor: json['Pelapor'],
-      insiden: json['insiden'],
-      insidenTerkait: json['InsidenTerkait'],
+      // Mapping Data Tambahan (LEBIH AMAN)
+      pelapor: json['Pelapor'] ?? json['pelapor'], // Cek huruf besar/kecil
+      
+      // 🔥 PERBAIKAN UTAMA DI SINI 🔥
+      // Kita isi 'insiden' dengan data apapun yang kita temukan tadi
+      insiden: rawInsiden, 
+      
+      // Kita isi 'insidenTerkait' juga dengan data yang sama (biar UI tidak error)
+      insidenTerkait: rawInsiden, 
     );
   }
 }
